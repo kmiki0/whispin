@@ -17,7 +17,9 @@ use base64::{engine::general_purpose, Engine as _};
 use tauri::Emitter;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use windows::Win32::Foundation::HWND;
-use windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, IsWindow, SetForegroundWindow,
+};
 
 use crate::dictionary;
 use crate::settings::{self, ApiKeys, DEFAULT_CORRECTION_MODEL};
@@ -320,11 +322,19 @@ pub async fn transcribe(
     {
         let ocr = state.ocr_text.lock();
         match ocr.as_ref() {
-            Some(t) => eprintln!(
-                "[whispin] OCR context available: {} chars, preview: {:?}",
-                t.chars().count(),
-                t.chars().take(80).collect::<String>()
-            ),
+            Some(t) => {
+                let chars = t.chars().count();
+                // The preview is captured screen content — only print it in debug
+                // builds so release logs never leak whatever was on screen.
+                if cfg!(debug_assertions) {
+                    eprintln!(
+                        "[whispin] OCR context available: {chars} chars, preview: {:?}",
+                        t.chars().take(80).collect::<String>()
+                    );
+                } else {
+                    eprintln!("[whispin] OCR context available: {chars} chars");
+                }
+            }
             None => eprintln!("[whispin] no OCR context yet"),
         }
     }
@@ -348,19 +358,75 @@ pub async fn transcribe(
 
     let final_text = maybe_correct_text(&app, &state, &settings, &dict_entries, &text).await;
 
+    // Remember what was on the clipboard so we can put it back after pasting —
+    // the transcript may contain sensitive dictated content and shouldn't linger
+    // on the clipboard (readable by any app / clipboard-history tool).
+    let prior_clipboard = app.clipboard().read_text().ok();
+
     app.clipboard()
         .write_text(final_text.clone())
         .map_err(|e| format!("clipboard write failed: {e}"))?;
 
-    if let Some(hwnd_val) = state.target_hwnd.lock().take() {
-        unsafe {
-            let _ = SetForegroundWindow(HWND(hwnd_val as *mut std::ffi::c_void));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(80));
+    // Only auto-paste if we can confirm the original target window still exists
+    // and is actually back in the foreground. Otherwise Ctrl+V could inject the
+    // transcript into whatever unrelated window happens to be focused now (the
+    // HWND captured at record time may have been closed and its handle reused).
+    // The text is already on the clipboard, so the user can paste manually.
+    let target = state.target_hwnd.lock().take();
+    if restore_foreground(target) {
+        paste_via_keyboard().map_err(|e| format!("paste failed: {e}"))?;
+    } else {
+        eprintln!("[whispin] target window unavailable; left transcript on clipboard for manual paste");
     }
 
-    paste_via_keyboard().map_err(|e| format!("paste failed: {e}"))?;
+    schedule_clipboard_cleanup(app.clone(), final_text.clone(), prior_clipboard);
     Ok(final_text)
+}
+
+/// Seconds to leave the transcript on the clipboard before restoring the prior
+/// content. Long enough to cover a manual paste if auto-paste was skipped,
+/// short enough that dictated text doesn't sit there indefinitely.
+const CLIPBOARD_CLEAR_DELAY_SECS: u64 = 20;
+
+/// After a delay, restore the clipboard to its pre-transcription content (or
+/// clear it if there was none) — but only if our transcript is still there, so
+/// we never clobber something the user copied in the meantime.
+fn schedule_clipboard_cleanup(
+    app: tauri::AppHandle,
+    transcript: String,
+    prior: Option<String>,
+) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(CLIPBOARD_CLEAR_DELAY_SECS));
+        match app.clipboard().read_text() {
+            Ok(current) if current == transcript => {
+                let restore = prior.unwrap_or_default();
+                if let Err(e) = app.clipboard().write_text(restore) {
+                    eprintln!("[whispin] clipboard cleanup failed: {e}");
+                } else {
+                    eprintln!("[whispin] restored clipboard after transcript paste");
+                }
+            }
+            _ => {}
+        }
+    });
+}
+
+/// Bring the recorded target window back to the foreground, returning true only
+/// if it's safe to synthesize a paste into it. Returns false when there was no
+/// target, the window no longer exists, or focus could not be restored.
+fn restore_foreground(target: Option<isize>) -> bool {
+    let Some(hwnd_val) = target else { return false };
+    let hwnd = HWND(hwnd_val as *mut std::ffi::c_void);
+    unsafe {
+        if !IsWindow(hwnd).as_bool() {
+            return false;
+        }
+        let _ = SetForegroundWindow(hwnd);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    // Confirm the foreground actually changed to our target before pasting.
+    unsafe { GetForegroundWindow().0 == hwnd.0 }
 }
 
 async fn maybe_correct_text(
@@ -393,7 +459,13 @@ async fn maybe_correct_text(
         return text.to_string();
     };
 
-    let ocr_opt = state.ocr_text.lock().clone();
+    // Respect the screen-context opt-out: never feed OCR'd screen content to
+    // the LLM when the user has turned it off.
+    let ocr_opt = if settings.llm.use_screen_context {
+        state.ocr_text.lock().clone()
+    } else {
+        None
+    };
     let dict_words = dictionary::words(dict_entries);
     let llm_started = std::time::Instant::now();
     match correct_with_llm_streaming(

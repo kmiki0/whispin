@@ -31,6 +31,7 @@ export type LlmConfig = {
   model: string;
   short_threshold_chars: number;
   timeout_secs: number;
+  use_screen_context: boolean;
 };
 
 export type GeneralConfig = {

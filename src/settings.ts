@@ -59,6 +59,7 @@ const DEFAULTS = {
     model: "meta-llama/llama-3.3-70b-instruct",
     short_threshold_chars: 20,
     timeout_secs: 8,
+    use_screen_context: true,
   } satisfies LlmConfig,
   recording: {
     mode: "ptt",

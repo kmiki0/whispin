@@ -269,7 +269,11 @@ pub async fn fill_missing_readings(api_key: &str, entries: &mut [Entry]) -> usiz
     let map: ReadingsResponse = match serde_json::from_str(content) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("[whispin] reading-gen content not JSON: {e}; content={content}");
+            if cfg!(debug_assertions) {
+                eprintln!("[whispin] reading-gen content not JSON: {e}; content={content}");
+            } else {
+                eprintln!("[whispin] reading-gen content not JSON: {e}");
+            }
             return 0;
         }
     };

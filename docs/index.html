@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Whispin — 画面の文脈で誤認識を直す日本語音声入力</title>
+<meta name="description" content="Whispin は画面上の会話文脈を使って誤認識を補正する、日本語特化の常駐音声入力ツール。Tauri 製で軽量、Groq 無料枠で動くのでコストはゼロ。" />
+
+<!-- OGP -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Whispin — 画面の文脈で誤認識を直す日本語音声入力" />
+<meta property="og:description" content="日本語特化の常駐音声入力ツール。画面の文脈で固有名詞や同音異義語の誤認識を補正。Tauri 製・Groq 無料枠でコストゼロ。" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<style>
+  :root {
+    --bg: #0b0d12;
+    --bg-soft: #12151d;
+    --card: #161a24;
+    --border: #232838;
+    --text: #e8ecf4;
+    --muted: #9aa3b5;
+    --accent: #7c8cff;
+    --accent-2: #4be0c4;
+    --radius: 16px;
+    --maxw: 1040px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN",
+      "Yu Gothic", Meiryo, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent); text-decoration: none; }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- Nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(12px);
+    background: rgba(11, 13, 18, 0.72);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 60px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .3px; }
+  .brand .logo {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center; color: #0b0d12; font-weight: 900;
+  }
+  .nav-links { display: flex; gap: 22px; align-items: center; }
+  .nav-links a { color: var(--muted); font-size: 14px; }
+  .nav-links a:hover { color: var(--text); }
+
+  /* ---------- Hero ---------- */
+  .hero { position: relative; overflow: hidden; padding: 96px 0 72px; }
+  .hero::before {
+    content: ""; position: absolute; inset: -40% 0 auto 0; height: 600px;
+    background: radial-gradient(60% 60% at 50% 0%, rgba(124,140,255,.22), transparent 70%);
+    pointer-events: none;
+  }
+  .hero .wrap { position: relative; text-align: center; }
+  .tag {
+    display: inline-block; font-size: 13px; color: var(--accent-2);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 14px; margin-bottom: 24px; background: var(--bg-soft);
+  }
+  h1 {
+    font-size: clamp(32px, 6vw, 56px); line-height: 1.2; margin: 0 0 20px;
+    letter-spacing: -.5px;
+  }
+  h1 .grad {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lead { font-size: clamp(16px, 2.4vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 36px; }
+
+  .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 13px 24px; border-radius: 12px; font-weight: 600; font-size: 15px;
+    border: 1px solid transparent; transition: transform .12s ease, opacity .12s ease;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn-primary { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #0b0d12; }
+  .btn-ghost { background: var(--card); color: var(--text); border-color: var(--border); }
+
+  .note { margin-top: 18px; font-size: 13px; color: var(--muted); }
+
+  /* ---------- Mock window ---------- */
+  .mock {
+    margin: 56px auto 0; max-width: 760px;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.45);
+  }
+  .mock .bar { display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .mock .bar i { width: 11px; height: 11px; border-radius: 50%; background: #2c3142; }
+  .mock .body { padding: 28px; }
+  .wave { display: flex; align-items: flex-end; gap: 5px; height: 56px; margin-bottom: 22px; }
+  .wave span {
+    width: 5px; border-radius: 3px;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent));
+    animation: bounce 1.1s ease-in-out infinite;
+  }
+  @keyframes bounce { 0%,100%{height:18%} 50%{height:100%} }
+  .transcript { text-align: left; font-size: 15px; }
+  .transcript .raw { color: var(--muted); text-decoration: line-through; opacity: .6; }
+  .transcript .fixed { color: var(--accent-2); font-weight: 600; }
+  .transcript .step { font-size: 12px; color: var(--muted); margin-top: 14px; }
+
+  /* ---------- Sections ---------- */
+  section { padding: 80px 0; }
+  .section-title { text-align: center; margin: 0 0 12px; font-size: clamp(24px, 4vw, 34px); }
+  .section-sub { text-align: center; color: var(--muted); margin: 0 auto 48px; max-width: 560px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px; transition: border-color .15s ease, transform .15s ease;
+  }
+  .card:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .card .ic { font-size: 28px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  /* ---------- Steps ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .step-card { position: relative; padding-top: 8px; }
+  .step-num {
+    width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+    font-weight: 800; color: #0b0d12; margin-bottom: 16px;
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  }
+  .step-card h3 { margin: 0 0 6px; font-size: 17px; }
+  .step-card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  /* ---------- Roadmap ---------- */
+  .road { max-width: 720px; margin: 0 auto; display: grid; gap: 16px; }
+  .road-item {
+    display: grid; grid-template-columns: 64px 1fr; gap: 18px; align-items: start;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px;
+  }
+  .ver { font-weight: 800; color: var(--accent-2); }
+  .road-item.done .ver::after { content: " ✓"; color: var(--accent-2); }
+  .road-item h3 { margin: 0 0 4px; font-size: 16px; }
+  .road-item p { margin: 0; color: var(--muted); font-size: 14px; }
+  .pill { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; margin-left: 8px; }
+
+  /* ---------- CTA band ---------- */
+  .band {
+    text-align: center; background: var(--bg-soft); border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .band h2 { font-size: clamp(24px, 4vw, 32px); margin: 0 0 14px; }
+  .band p { color: var(--muted); margin: 0 0 28px; }
+
+  /* ---------- Footer ---------- */
+  footer { padding: 40px 0; color: var(--muted); font-size: 13px; }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+  @media (max-width: 720px) {
+    .grid, .steps { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="logo">W</span> Whispin</div>
+    <div class="nav-links">
+      <a href="#features">特徴</a>
+      <a href="#how">使い方</a>
+      <a href="#roadmap">ロードマップ</a>
+      <a href="https://github.com/kmiki0/whispin">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap">
+    <span class="tag">日本語特化・常駐音声入力ツール</span>
+    <h1>話すだけ。<br><span class="grad">画面の文脈</span>で誤認識を直す。</h1>
+    <p class="lead">
+      Whispin は、いま見ている画面の会話文脈を手がかりに、固有名詞や同音異義語の誤認識を補正する日本語音声入力ツール。
+      Tauri 製で軽く、Groq の無料枠で動くのでコストはゼロ。
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/kmiki0/whispin">⬇ ダウンロード / ソース</a>
+      <a class="btn btn-ghost" href="#how">使い方を見る</a>
+    </div>
+    <p class="note">Windows 11 / クレカ不要の Groq API キーだけで動作</p>
+
+    <!-- Mock -->
+    <div class="mock">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="wave">
+          <span style="animation-delay:0s"></span>
+          <span style="animation-delay:.1s"></span>
+          <span style="animation-delay:.2s"></span>
+          <span style="animation-delay:.3s"></span>
+          <span style="animation-delay:.15s"></span>
+          <span style="animation-delay:.25s"></span>
+          <span style="animation-delay:.05s"></span>
+          <span style="animation-delay:.35s"></span>
+          <span style="animation-delay:.2s"></span>
+          <span style="animation-delay:.1s"></span>
+          <span style="animation-delay:.3s"></span>
+          <span style="animation-delay:0s"></span>
+        </div>
+        <div class="transcript">
+          <div><span class="raw">クロードコードでこうしんを直して</span></div>
+          <div><span class="fixed">Claude Code で更新を直して</span></div>
+          <div class="step">↑ 画面に「Claude Code」が表示されている → 文脈で補正</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="wrap">
+    <h2 class="section-title">なぜ Whispin?</h2>
+    <p class="section-sub">ブラウザ標準の音声入力では拾いきれない、日本語ならではの誤認識を解決します。</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ic">🎯</div>
+        <h3>文脈で補正</h3>
+        <p>画面に映る固有名詞や専門用語を手がかりに、同音異義語・誤変換を文脈で正します。Claude Code / claude.ai のようなワークフローに最適。</p>
+      </div>
+      <div class="card">
+        <div class="ic">⚡</div>
+        <h3>押して話すだけ</h3>
+        <p>ホットキーを長押しして話し、離すと文字起こし。クリップボード経由で元のウィンドウへ自動で貼り付け。マウス操作は不要。</p>
+      </div>
+      <div class="card">
+        <div class="ic">💰</div>
+        <h3>コストはゼロ</h3>
+        <p>Groq の無料枠で動作。ASR は Whisper Large v3 Turbo。クレカ不要の API キーを発行するだけで使い始められます。</p>
+      </div>
+      <div class="card">
+        <div class="ic">🪶</div>
+        <h3>軽量・常駐</h3>
+        <p>Tauri 2 製のネイティブアプリ。バックグラウンドに常駐し、必要なときだけマイクを起動。リソースを食いません。</p>
+      </div>
+      <div class="card">
+        <div class="ic">🔒</div>
+        <h3>プライバシー配慮</h3>
+        <p>API キーは Windows DPAPI で暗号化して保存。AI校正に使う「画面文脈」の送信はワンクリックでオフにでき、音声・画面はローカルにため込みません。</p>
+      </div>
+      <div class="card">
+        <div class="ic">🌊</div>
+        <h3>邪魔しないUI</h3>
+        <p>画面上端にスッと現れる波形オーバーレイで、録音状態がひと目で分かる。作業の邪魔をしません。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW -->
+<section id="how" style="background:var(--bg-soft);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+  <div class="wrap">
+    <h2 class="section-title">使い方は 3 ステップ</h2>
+    <p class="section-sub">セットアップが終われば、あとは押して話すだけ。</p>
+    <div class="steps">
+      <div class="step-card">
+        <div class="step-num">1</div>
+        <h3>長押しで録音</h3>
+        <p>トリガー（既定は右クリック長押し、設定で変更可）を押している間だけ録音。push-to-talk 方式なので誤起動しません。</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">2</div>
+        <h3>離すと文字起こし</h3>
+        <p>キーを離すと録音停止。Whisper で文字起こしし、画面の文脈をもとに誤認識を補正します。</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">3</div>
+        <h3>自動で貼り付け</h3>
+        <p>結果をクリップボードに書き込み、元のフォーカスウィンドウへ戻って自動入力。すぐ続きが書けます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <div class="wrap">
+    <h2 class="section-title">ロードマップ</h2>
+    <p class="section-sub">段階的に育てています。最新の状況は GitHub をご覧ください。</p>
+    <div class="road">
+      <div class="road-item done">
+        <div class="ver">v1</div>
+        <div>
+          <h3>最小動作 <span class="pill">動作確認済み</span></h3>
+          <p>録音 → Whisper 文字起こし → クリップボード経由で自動貼り付け。波形オーバーレイ実装済み。</p>
+        </div>
+      </div>
+      <div class="road-item">
+        <div class="ver">v2</div>
+        <div>
+          <h3>文脈補正 <span class="pill">開発中</span></h3>
+          <p>スクリーンショット + OCR + 辞書 + LLM 後処理で、画面の文脈を使った誤認識補正を本格化。右Alt長押しにも対応予定。</p>
+        </div>
+      </div>
+      <div class="road-item">
+        <div class="ver">v3</div>
+        <div>
+          <h3>表現の磨き込み <span class="pill">予定</span></h3>
+          <p>音声に反応するオーバーレイアニメーションなど、使い心地をさらに高めます。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BAND -->
+<section class="band">
+  <div class="wrap">
+    <h2>誤認識のストレスから解放されよう</h2>
+    <p>セットアップは数分。今すぐ試せます。</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/kmiki0/whispin">GitHub で始める</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="brand"><span class="logo">W</span> Whispin</div>
+    <div>日本語特化の常駐音声入力ツール — Tauri 2 + Groq</div>
+  </div>
+</footer>
+
+</body>
+</html>

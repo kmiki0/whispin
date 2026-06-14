@@ -12,6 +12,8 @@
 #[cfg(windows)]
 mod audio_ducking;
 #[cfg(windows)]
+mod crypto;
+#[cfg(windows)]
 mod dictionary;
 #[cfg(windows)]
 mod ocr;

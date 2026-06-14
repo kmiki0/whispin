@@ -109,6 +109,21 @@ pub fn settings_path(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
         .map(|d| d.join("settings.json"))
 }
 
+/// API keys are stored on disk encrypted with Windows DPAPI but held in memory
+/// as plaintext. These helpers convert at the load/save boundary so the rest of
+/// the app never sees ciphertext.
+fn decrypt_keys(keys: &mut ApiKeys) {
+    keys.groq = crate::crypto::unprotect(&keys.groq);
+    keys.openai = crate::crypto::unprotect(&keys.openai);
+    keys.openrouter = crate::crypto::unprotect(&keys.openrouter);
+}
+
+fn encrypt_keys(keys: &mut ApiKeys) {
+    keys.groq = crate::crypto::protect(&keys.groq);
+    keys.openai = crate::crypto::protect(&keys.openai);
+    keys.openrouter = crate::crypto::protect(&keys.openrouter);
+}
+
 pub fn load(app: &tauri::AppHandle) -> AppSettings {
     let Some(path) = settings_path(app) else {
         return AppSettings::default();
@@ -117,10 +132,14 @@ pub fn load(app: &tauri::AppHandle) -> AppSettings {
         return AppSettings::default();
     }
     match std::fs::read_to_string(&path) {
-        Ok(s) => serde_json::from_str(&s).unwrap_or_else(|e| {
-            eprintln!("[whispin] settings parse failed: {e}");
-            AppSettings::default()
-        }),
+        Ok(s) => {
+            let mut settings: AppSettings = serde_json::from_str(&s).unwrap_or_else(|e| {
+                eprintln!("[whispin] settings parse failed: {e}");
+                AppSettings::default()
+            });
+            decrypt_keys(&mut settings.api_keys);
+            settings
+        }
         Err(e) => {
             eprintln!("[whispin] settings read failed: {e}");
             AppSettings::default()
@@ -133,7 +152,10 @@ pub fn save(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let json = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    // Encrypt keys on a clone so the caller's in-memory copy stays plaintext.
+    let mut to_store = settings.clone();
+    encrypt_keys(&mut to_store.api_keys);
+    let json = serde_json::to_string_pretty(&to_store).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
 

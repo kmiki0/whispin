@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/settings.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Whispin 設定</title>
+    <script type="module" src="/src/settings.ts" defer></script>
+  </head>
+  <body>
+    <main class="settings">
+      <aside class="nav">
+        <h2 class="nav-title">Whispin</h2>
+        <ul>
+          <li>
+            <button type="button" class="nav-item active" data-section="hotkey">
+              トリガー
+            </button>
+          </li>
+          <li>
+            <button type="button" class="nav-item" data-section="llm">
+              AI校正
+            </button>
+          </li>
+          <li>
+            <button type="button" class="nav-item" data-section="dict">
+              辞書
+            </button>
+          </li>
+          <li>
+            <button type="button" class="nav-item" data-section="asr">
+              APIキー
+            </button>
+          </li>
+          <li>
+            <button type="button" class="nav-item" data-section="app">
+              アプリ
+            </button>
+          </li>
+        </ul>
+      </aside>
+
+      <div class="panel">
+        <section class="section active" data-section-content="hotkey">
+          <header>
+            <h1>トリガー</h1>
+          </header>
+
+          <div class="group">
+            <h2 class="group-title">入力</h2>
+            <section class="field">
+              <label class="field-label">キー / マウスボタン</label>
+              <div class="row">
+                <div class="current-trigger" id="current-trigger">未設定</div>
+                <button type="button" id="capture-key" class="ghost">
+                  キャプチャ
+                </button>
+              </div>
+              <p class="hint" id="capture-hint">
+                「キャプチャ」を押して、設定したいキーまたは Shift+M
+                のような組合せを押してください。
+              </p>
+            </section>
+
+            <section class="field">
+              <label class="field-label" for="threshold">長押し閾値</label>
+              <div class="row">
+                <input
+                  type="range"
+                  id="threshold"
+                  min="0"
+                  max="3"
+                  step="1"
+                  list="threshold-ticks"
+                />
+                <datalist id="threshold-ticks">
+                  <option value="0" label="速い"></option>
+                  <option value="1" label="標準"></option>
+                  <option value="2" label="遅め"></option>
+                  <option value="3" label="ゆっくり"></option>
+                </datalist>
+                <span class="threshold-value" id="threshold-value">標準 · 250 ms</span>
+              </div>
+              <p class="hint">
+                短いクリック/キープレスは通常動作 (右クリックメニュー、文字入力等)
+                に転送されます。
+              </p>
+            </section>
+          </div>
+
+          <div class="group">
+            <h2 class="group-title">録音モード</h2>
+            <section class="field">
+              <label class="radio-row">
+                <input type="radio" name="rec-mode" value="ptt" />
+                <span>
+                  <strong>押している間だけ録音 (PTT)</strong>
+                  <span class="hint">トリガーを離すと停止します。無音判定は使いません。</span>
+                </span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="rec-mode" value="toggle" />
+                <span>
+                  <strong>タップで開始 / 無音で自動停止 (Toggle)</strong>
+                  <span class="hint">短く押して開始、しばらく無音が続くと自動停止します。もう一度押しても停止できます。</span>
+                </span>
+              </label>
+            </section>
+          </div>
+
+          <div class="group" id="silence-group">
+            <h2 class="group-title">無音判定時間 (Toggle のみ)</h2>
+            <section class="field">
+              <div class="row">
+                <input
+                  type="range"
+                  id="rec-silence"
+                  min="500"
+                  max="3000"
+                  step="100"
+                />
+                <span class="threshold-value" id="rec-silence-val">1.5 秒</span>
+              </div>
+              <p class="hint">この時間ずっと無音だと録音を停止します。</p>
+            </section>
+          </div>
+        </section>
+
+        <section class="section" data-section-content="asr">
+          <header>
+            <h1>APIキー</h1>
+          </header>
+          <p class="hint">
+            優先順位: OpenRouter → OpenAI → Groq。設定が空欄なら環境変数 (例:
+            <code>OPENROUTER_API_KEY</code>) が使われます。
+          </p>
+          <section class="field">
+            <label class="field-label" for="key-openrouter">
+              OpenRouter API キー
+            </label>
+            <input type="password" id="key-openrouter" placeholder="sk-or-..." autocomplete="off" />
+            <p class="hint">推奨。Whisper Turbo (Groq経由) + LLM校正の両方に使われます。</p>
+          </section>
+          <section class="field">
+            <label class="field-label" for="key-groq">Groq API キー</label>
+            <input type="password" id="key-groq" placeholder="gsk_..." autocomplete="off" />
+            <p class="hint">OpenRouter キー未設定時のフォールバック。Groq から直接 Whisper を呼びます。</p>
+          </section>
+        </section>
+
+        <section class="section" data-section-content="llm">
+          <header>
+            <h1>AI校正</h1>
+          </header>
+
+          <div class="group">
+            <h2 class="group-title">動作</h2>
+            <section class="field">
+              <label class="toggle-row">
+                <input type="checkbox" id="llm-enabled" />
+                <span>AI校正を有効にする</span>
+              </label>
+              <p class="hint">
+                無効にすると、Whisper の生テキストをそのまま貼り付けます (高速)。
+              </p>
+            </section>
+            <section class="field">
+              <label class="field-label" for="llm-model-select">モデル</label>
+              <select id="llm-model-select">
+                <option value="meta-llama/llama-3.3-70b-instruct">
+                  標準 (推奨) — Llama 3.3 70B [Groq]
+                </option>
+                <option value="meta-llama/llama-3.1-8b-instant">
+                  最速 — Llama 3.1 8B Instant [Groq]
+                </option>
+                <option value="google/gemini-2.5-flash">
+                  高品質 — Gemini 2.5 Flash [Google]
+                </option>
+                <option value="openai/gpt-4o-mini">
+                  節約 — GPT-4o mini [OpenAI]
+                </option>
+                <option value="__custom__">カスタム…</option>
+              </select>
+              <input
+                type="text"
+                id="llm-model-custom"
+                placeholder="例: anthropic/claude-3.5-haiku"
+                autocomplete="off"
+                hidden
+              />
+              <p class="hint">
+                OpenRouter のモデル ID。空欄なら標準モデルが使われます。
+              </p>
+            </section>
+          </div>
+
+          <div class="group">
+            <h2 class="group-title">パフォーマンス</h2>
+            <section class="field">
+              <label class="field-label" for="llm-short">
+                短文スキップ閾値 (文字数)
+              </label>
+              <div class="row">
+                <input type="range" id="llm-short" min="0" max="50" step="5" />
+                <span class="threshold-value" id="llm-short-val">20 文字</span>
+              </div>
+              <p class="hint">
+                これより短い発話は LLM 校正をスキップして即座に貼り付けます。
+              </p>
+            </section>
+            <section class="field">
+              <label class="field-label" for="llm-timeout">タイムアウト (秒)</label>
+              <div class="row">
+                <input type="range" id="llm-timeout" min="3" max="30" step="1" />
+                <span class="threshold-value" id="llm-timeout-val">8 秒</span>
+              </div>
+              <p class="hint">
+                この時間を超えたら校正を諦め、Whisper の生テキストにフォールバック。
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <section class="section" data-section-content="dict">
+          <header>
+            <h1>固有名詞辞書</h1>
+          </header>
+          <p class="hint">
+            音声認識でカタカナや誤字になりがちな固有名詞のリスト。LLM校正時に
+            「音が近い箇所はこの表記に置換」と指示します。
+          </p>
+
+          <section class="field">
+            <label class="field-label" for="dict-input">追加</label>
+            <div class="row">
+              <input
+                type="text"
+                id="dict-input"
+                placeholder="例: Claude Code"
+                autocomplete="off"
+              />
+              <button type="button" id="dict-add" class="ghost">追加</button>
+            </div>
+            <p class="hint">Enter キーでも追加できます。</p>
+          </section>
+
+          <section class="field">
+            <label class="field-label">
+              登録済み (<span id="dict-count">0</span>)
+            </label>
+            <div id="dict-list" class="dict-list"></div>
+          </section>
+        </section>
+
+        <section class="section" data-section-content="app">
+          <header>
+            <h1>アプリ全般</h1>
+          </header>
+
+          <div class="group">
+            <h2 class="group-title">動作</h2>
+            <section class="field">
+              <label class="toggle-row">
+                <input type="checkbox" id="app-startup" />
+                <span>Windows 起動時に自動起動</span>
+              </label>
+              <p class="hint">ログイン時に Whispin が自動で立ち上がります。</p>
+            </section>
+            <section class="field">
+              <label class="field-label" for="app-mic">マイクデバイス</label>
+              <select id="app-mic">
+                <option value="">既定 (OS 設定に従う)</option>
+              </select>
+              <p class="hint">
+                選択は次の録音から反映されます。マイクラベルを表示するためにマイク権限を求めることがあります。
+              </p>
+            </section>
+          </div>
+
+          <div class="group">
+            <h2 class="group-title">ユーティリティ</h2>
+            <section class="field">
+              <div class="row">
+                <button type="button" id="app-open-folder" class="ghost">
+                  設定フォルダを開く
+                </button>
+              </div>
+              <p class="hint">
+                %APPDATA%\com.kmiki.whispin\ をエクスプローラで開きます。
+              </p>
+            </section>
+          </div>
+
+          <div class="group">
+            <h2 class="group-title">情報</h2>
+            <section class="field">
+              <div class="app-info">
+                <p>
+                  <strong>Whispin</strong>
+                  v<span id="app-version">—</span>
+                </p>
+                <p class="hint">日本語特化の常駐音声入力ツール</p>
+              </div>
+            </section>
+          </div>
+
+          <div class="group danger-zone">
+            <h2 class="group-title">危険な操作</h2>
+            <section class="field">
+              <button type="button" id="app-uninstall" class="danger">
+                設定と辞書を全削除して終了
+              </button>
+              <p class="hint">
+                スタートアップ登録、設定 (`settings.json`)、辞書 (`dictionary.json`)
+                を全て削除してアプリを終了します。元に戻せません。
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <footer class="actions">
+          <p class="status" id="status"></p>
+          <button type="button" id="cancel" class="ghost">キャンセル</button>
+          <button type="button" id="save" class="primary">保存して適用</button>
+        </footer>
+      </div>
+    </main>
+  </body>
+</html>

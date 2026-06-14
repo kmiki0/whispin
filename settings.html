@@ -165,6 +165,17 @@
               </p>
             </section>
             <section class="field">
+              <label class="toggle-row">
+                <input type="checkbox" id="llm-screen-context" />
+                <span>画面文脈を使う</span>
+              </label>
+              <p class="hint">
+                録音中にアクティブウィンドウを画面キャプチャ・OCR し、その文字を
+                校正 AI に文脈として送信します。<strong>無効にすると画面の取得・送信を一切行いません</strong>
+                (パスワード等が画面にある場合の漏えい防止)。
+              </p>
+            </section>
+            <section class="field">
               <label class="field-label" for="llm-model-select">モデル</label>
               <select id="llm-model-select">
                 <option value="meta-llama/llama-3.3-70b-instruct">

@@ -7,6 +7,7 @@ import type { LlmConfig } from "./types";
 const DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct";
 
 let llmEnabled: HTMLInputElement;
+let llmScreenContext: HTMLInputElement;
 let llmModelSelect: HTMLSelectElement;
 let llmModelCustom: HTMLInputElement;
 let llmShort: HTMLInputElement;
@@ -17,6 +18,7 @@ let presets: Set<string>;
 
 export function initLlmSection() {
   llmEnabled = $<HTMLInputElement>("#llm-enabled");
+  llmScreenContext = $<HTMLInputElement>("#llm-screen-context");
   llmModelSelect = $<HTMLSelectElement>("#llm-model-select");
   llmModelCustom = $<HTMLInputElement>("#llm-model-custom");
   llmShort = $<HTMLInputElement>("#llm-short");
@@ -45,6 +47,7 @@ export function initLlmSection() {
 
 export function applyLlmConfig(c: LlmConfig) {
   llmEnabled.checked = c.enabled;
+  llmScreenContext.checked = c.use_screen_context ?? true;
   setLlmModel(c.model);
   llmShort.value = String(c.short_threshold_chars);
   llmShortVal.textContent = `${c.short_threshold_chars} 文字`;
@@ -58,6 +61,7 @@ export function readLlmConfig(): LlmConfig {
     model: getLlmModel(),
     short_threshold_chars: Number(llmShort.value),
     timeout_secs: Number(llmTimeout.value),
+    use_screen_context: llmScreenContext.checked,
   };
 }
 

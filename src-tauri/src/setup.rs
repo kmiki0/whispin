@@ -92,12 +92,14 @@ fn install_trigger(
 
 fn on_trigger_pressed(app: &tauri::AppHandle, state: &Arc<AppState>) {
     use std::sync::atomic::Ordering;
-    let mode = settings::load(app).recording.mode;
+    let settings = settings::load(app);
+    let mode = settings.recording.mode;
+    let ocr_enabled = settings.llm.use_screen_context;
     let was_recording = state.is_recording.swap(true, Ordering::SeqCst);
     match mode {
         RecordingMode::Ptt => {
             eprintln!("[whispin] PTT pressed (mode=PTT)");
-            begin_recording_side_effects(state, app);
+            begin_recording_side_effects(state, app, ocr_enabled);
             emit(app, "start-recording");
         }
         RecordingMode::Toggle => {
@@ -107,7 +109,7 @@ fn on_trigger_pressed(app: &tauri::AppHandle, state: &Arc<AppState>) {
                 // Audio restore + flag reset happen via notify_recording_stopped from JS.
             } else {
                 eprintln!("[whispin] Toggle: 1st tap → start");
-                begin_recording_side_effects(state, app);
+                begin_recording_side_effects(state, app, ocr_enabled);
                 emit(app, "start-recording");
             }
         }
@@ -149,11 +151,15 @@ fn emit(app: &tauri::AppHandle, event: &str) {
 
 /// Side effects that fire once when a recording *starts*: capture HWND, kick
 /// off OCR + audio ducking on background threads, show the notch window.
-fn begin_recording_side_effects(state: &Arc<AppState>, app: &tauri::AppHandle) {
+fn begin_recording_side_effects(state: &Arc<AppState>, app: &tauri::AppHandle, ocr_enabled: bool) {
     let captured = capture_foreground_hwnd(state);
     spawn_duck(state);
-    if let Some(hwnd_val) = captured {
-        spawn_ocr(state, hwnd_val);
+    // Only screen-capture + OCR when the user allows screen context. Otherwise
+    // we never touch the screen contents at all.
+    if ocr_enabled {
+        if let Some(hwnd_val) = captured {
+            spawn_ocr(state, hwnd_val);
+        }
     }
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();

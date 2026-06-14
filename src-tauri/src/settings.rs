@@ -37,12 +37,21 @@ pub struct ApiKeys {
     pub openrouter: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct LlmConfig {
     pub enabled: bool,
     pub model: String,
     pub short_threshold_chars: usize,
     pub timeout_secs: u64,
+    /// When true, the active window is screen-captured + OCR'd and the text is
+    /// sent to the correction LLM as context. Off = no screen capture at all.
+    /// `serde(default)` so settings.json files predating this field load as true.
+    #[serde(default = "default_true")]
+    pub use_screen_context: bool,
 }
 
 impl Default for LlmConfig {
@@ -52,6 +61,7 @@ impl Default for LlmConfig {
             model: DEFAULT_CORRECTION_MODEL.to_string(),
             short_threshold_chars: SHORT_TEXT_THRESHOLD_CHARS,
             timeout_secs: CORRECTION_TIMEOUT_SECS,
+            use_screen_context: true,
         }
     }
 }

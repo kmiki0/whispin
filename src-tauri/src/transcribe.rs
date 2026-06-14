@@ -459,7 +459,13 @@ async fn maybe_correct_text(
         return text.to_string();
     };
 
-    let ocr_opt = state.ocr_text.lock().clone();
+    // Respect the screen-context opt-out: never feed OCR'd screen content to
+    // the LLM when the user has turned it off.
+    let ocr_opt = if settings.llm.use_screen_context {
+        state.ocr_text.lock().clone()
+    } else {
+        None
+    };
     let dict_words = dictionary::words(dict_entries);
     let llm_started = std::time::Instant::now();
     match correct_with_llm_streaming(

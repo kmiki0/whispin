@@ -40,7 +40,7 @@ export function currentStatus(): Status | undefined {
 function defaultLabel(s: Status): string {
   switch (s) {
     case "ready":
-      return "Voice ready";
+      return "Whispin Ready";
     case "recording":
       return "Recording...";
     case "transcribing":

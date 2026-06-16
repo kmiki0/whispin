@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>scan</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        user-select: none;
+        cursor: default;
+      }
+      .scan {
+        position: fixed;
+        inset: 0;
+        box-sizing: border-box;
+        border: 1px solid rgba(90, 209, 255, 0.3);
+      }
+
+      /* --- focus frame: shown the whole time the overlay is up --- */
+      .fr {
+        position: absolute;
+        width: 36px;
+        height: 36px;
+        border: 3px solid rgba(90, 209, 255, 0.92);
+        animation: focus-pulse 2s ease-in-out infinite;
+      }
+      .fr.tl { top: 14px; left: 14px; border-right: none; border-bottom: none; }
+      .fr.tr { top: 14px; right: 14px; border-left: none; border-bottom: none; }
+      .fr.bl { bottom: 14px; left: 14px; border-right: none; border-top: none; }
+      .fr.br { bottom: 14px; right: 14px; border-left: none; border-top: none; }
+      @keyframes focus-pulse {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 1; }
+      }
+
+      /* --- reading animation: only while body.reading (OCR in progress) --- */
+      .tint,
+      .line,
+      .badge {
+        display: none;
+      }
+      body.reading .tint {
+        display: block;
+        position: absolute;
+        inset: 0;
+        background: rgba(90, 209, 255, 0.06);
+        animation: tint 1.6s ease-in-out infinite;
+      }
+      @keyframes tint {
+        0%, 100% { opacity: 0.45; }
+        50% { opacity: 1; }
+      }
+      body.reading .line {
+        display: block;
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 3px;
+        background: linear-gradient(90deg, transparent, rgba(90, 209, 255, 0.95), transparent);
+        box-shadow: 0 0 18px 4px rgba(90, 209, 255, 0.5);
+        animation: sweep 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      .line::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 3px;
+        height: 140px;
+        background: linear-gradient(180deg, rgba(90, 209, 255, 0.16), transparent);
+      }
+      @keyframes sweep {
+        0% { top: -3%; }
+        100% { top: 103%; }
+      }
+      body.reading .badge {
+        display: inline-block;
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-family: -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN",
+          "Noto Sans CJK JP", sans-serif;
+        font-size: 13px;
+        color: #5ad1ff;
+        background: rgba(8, 12, 16, 0.82);
+        border: 1px solid rgba(90, 209, 255, 0.5);
+        padding: 6px 14px;
+        border-radius: 999px;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+      }
+      .badge::before {
+        content: "";
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #5ad1ff;
+        margin-right: 8px;
+        vertical-align: middle;
+        box-shadow: 0 0 8px #5ad1ff;
+        animation: bp 1s ease-in-out infinite;
+      }
+      @keyframes bp {
+        50% { opacity: 0.3; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fr { animation: none; }
+        body.reading .line, body.reading .tint, .badge::before { animation: none; }
+        body.reading .line { top: 50%; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scan">
+      <div class="fr tl"></div>
+      <div class="fr tr"></div>
+      <div class="fr bl"></div>
+      <div class="fr br"></div>
+      <div class="tint"></div>
+      <div class="line"></div>
+      <div class="badge">画面を読み取り中…</div>
+    </div>
+  </body>
+</html>

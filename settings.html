@@ -50,14 +50,11 @@
             <h2 class="group-title">入力</h2>
             <section class="field">
               <label class="field-label">キー / マウスボタン</label>
-              <div class="row">
-                <div class="current-trigger" id="current-trigger">未設定</div>
-                <button type="button" id="capture-key" class="ghost">
-                  キャプチャ
-                </button>
-              </div>
+              <button type="button" class="current-trigger" id="current-trigger">
+                未設定
+              </button>
               <p class="hint" id="capture-hint">
-                「キャプチャ」を押して、設定したいキーまたは Shift+M
+                ボックスをクリックして、設定したいキーまたは Shift+M
                 のような組合せを押してください。
               </p>
             </section>
@@ -138,13 +135,23 @@
             <label class="field-label" for="key-openrouter">
               OpenRouter API キー
             </label>
-            <input type="password" id="key-openrouter" placeholder="sk-or-..." autocomplete="off" />
+            <div class="row">
+              <input type="password" id="key-openrouter" placeholder="sk-or-..." autocomplete="off" />
+              <button type="button" class="ghost icon-btn" data-reveal="key-openrouter" title="表示/非表示">👁</button>
+              <button type="button" class="ghost" data-test-key="openrouter">テスト</button>
+            </div>
             <p class="hint">推奨。Whisper Turbo (Groq経由) + LLM校正の両方に使われます。</p>
+            <p class="test-result" data-test-result="openrouter"></p>
           </section>
           <section class="field">
             <label class="field-label" for="key-groq">Groq API キー</label>
-            <input type="password" id="key-groq" placeholder="gsk_..." autocomplete="off" />
+            <div class="row">
+              <input type="password" id="key-groq" placeholder="gsk_..." autocomplete="off" />
+              <button type="button" class="ghost icon-btn" data-reveal="key-groq" title="表示/非表示">👁</button>
+              <button type="button" class="ghost" data-test-key="groq">テスト</button>
+            </div>
             <p class="hint">OpenRouter キー未設定時のフォールバック。Groq から直接 Whisper を呼びます。</p>
+            <p class="test-result" data-test-result="groq"></p>
           </section>
         </section>
 
@@ -163,8 +170,13 @@
               <p class="hint">
                 無効にすると、Whisper の生テキストをそのまま貼り付けます (高速)。
               </p>
+              <p class="warn" id="llm-key-warn" hidden>
+                ⚠ AI校正は全モデルが OpenRouter 経由のため、OpenRouter
+                API キーが必要です (未入力なら環境変数
+                <code>OPENROUTER_API_KEY</code>)。未設定だと校正は自動的にスキップされます。
+              </p>
             </section>
-            <section class="field">
+            <section class="field" data-llm-dependent>
               <label class="toggle-row">
                 <input type="checkbox" id="llm-screen-context" />
                 <span>画面文脈を使う</span>
@@ -175,7 +187,7 @@
                 (パスワード等が画面にある場合の漏えい防止)。
               </p>
             </section>
-            <section class="field">
+            <section class="field" data-llm-dependent>
               <label class="field-label" for="llm-model-select">モデル</label>
               <select id="llm-model-select">
                 <option value="meta-llama/llama-3.3-70b-instruct">
@@ -205,7 +217,7 @@
             </section>
           </div>
 
-          <div class="group">
+          <div class="group" data-llm-dependent>
             <h2 class="group-title">パフォーマンス</h2>
             <section class="field">
               <label class="field-label" for="llm-short">
@@ -256,9 +268,27 @@
           </section>
 
           <section class="field">
-            <label class="field-label">
-              登録済み (<span id="dict-count">0</span>)
-            </label>
+            <div class="row dict-toolbar">
+              <label class="field-label">
+                登録済み (<span id="dict-count">0</span>)
+              </label>
+              <input
+                type="text"
+                id="dict-filter"
+                class="dict-filter"
+                placeholder="絞り込み…"
+                autocomplete="off"
+              />
+              <button type="button" id="dict-export" class="ghost">
+                エクスポート
+              </button>
+              <button type="button" id="dict-import" class="ghost">
+                インポート
+              </button>
+            </div>
+            <p class="hint">
+              語をクリックすると編集できます。エクスポート/インポートはクリップボード経由 (JSON)。
+            </p>
             <div id="dict-list" class="dict-list"></div>
           </section>
         </section>
@@ -282,6 +312,12 @@
               <select id="app-mic">
                 <option value="">既定 (OS 設定に従う)</option>
               </select>
+              <div class="row">
+                <button type="button" id="mic-test" class="ghost">入力テスト</button>
+                <div class="mic-meter" id="mic-meter" aria-hidden="true">
+                  <div class="mic-meter-fill" id="mic-meter-fill"></div>
+                </div>
+              </div>
               <p class="hint">
                 選択は次の録音から反映されます。マイクラベルを表示するためにマイク権限を求めることがあります。
               </p>
@@ -331,10 +367,25 @@
 
         <footer class="actions">
           <p class="status" id="status"></p>
+          <button type="button" id="reset-defaults" class="ghost">
+            デフォルトに戻す
+          </button>
           <button type="button" id="cancel" class="ghost">キャンセル</button>
           <button type="button" id="save" class="primary">保存して適用</button>
         </footer>
       </div>
     </main>
+
+    <div class="modal-backdrop" id="confirm-modal" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <h2 id="modal-title">未保存の変更があります</h2>
+        <p class="hint">保存せずに閉じると、変更内容は失われます。</p>
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel" class="ghost">キャンセル</button>
+          <button type="button" id="modal-discard" class="danger">破棄して閉じる</button>
+          <button type="button" id="modal-save" class="primary">保存して閉じる</button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

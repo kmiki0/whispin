@@ -26,8 +26,12 @@ pub fn run_setup(
     // Touch the dictionary on startup so it's created with defaults if missing.
     let _ = dictionary::load(app.handle());
 
+    // Start the serialized audio-duck worker before any trigger can fire.
+    audio_ducking::init();
+
     install_tray(app)?;
     place_main_window(app);
+    crate::scan_overlay::create(app.handle());
     install_trigger(app, state_for_shortcut)?;
     Ok(())
 }
@@ -124,23 +128,10 @@ fn on_trigger_released(app: &tauri::AppHandle, state: &Arc<AppState>) {
     eprintln!("[whispin] PTT released");
     state.is_recording.store(false, Ordering::SeqCst);
     emit(app, "stop-recording");
-
-    let state_clone = state.clone();
-    std::thread::spawn(move || {
-        let pids = std::mem::take(&mut *state_clone.ducked_pids.lock());
-        if !pids.is_empty() {
-            let started = std::time::Instant::now();
-            if let Err(e) = audio_ducking::restore_sessions(&pids) {
-                eprintln!("[whispin] restore failed: {e}");
-            } else {
-                eprintln!(
-                    "[whispin] restored {} session(s) ({} ms)",
-                    pids.len(),
-                    started.elapsed().as_millis()
-                );
-            }
-        }
-    });
+    // Hand restore to the serialized audio worker. It runs after this session's
+    // duck completes, so a quick tap can't restore an empty set and leave other
+    // apps muted.
+    audio_ducking::request_restore();
 }
 
 fn emit(app: &tauri::AppHandle, event: &str) {
@@ -153,16 +144,29 @@ fn emit(app: &tauri::AppHandle, event: &str) {
 /// off OCR + audio ducking on background threads, show the notch window.
 fn begin_recording_side_effects(state: &Arc<AppState>, app: &tauri::AppHandle, ocr_enabled: bool) {
     let captured = capture_foreground_hwnd(state);
-    spawn_duck(state);
-    // Only screen-capture + OCR when the user allows screen context. Otherwise
-    // we never touch the screen contents at all.
-    if ocr_enabled {
-        if let Some(hwnd_val) = captured {
-            spawn_ocr(state, hwnd_val);
+    audio_ducking::request_duck();
+    if let Some(hwnd_val) = captured {
+        // Always frame the active window while recording — this is just a
+        // visual marker (no screen capture), so it shows regardless of the
+        // screen-context setting.
+        crate::scan_overlay::show_over(app, hwnd_val);
+        // Only actually read the screen (capture + OCR + the reading sweep)
+        // when the user allows screen context.
+        if ocr_enabled {
+            spawn_ocr(state, app, hwnd_val);
         }
     }
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
+        // The scan overlay (corner focus markers) is also always-on-top and was
+        // just raised above everything in show_over(). Re-assert topmost on the
+        // notch so it sits *above* the overlay's markers instead of behind them.
+        // Toggle off→on to force the z-order raise even when the flag is already
+        // set (a plain set_always_on_top(true) can be a no-op). No focus is
+        // stolen (SWP_NOACTIVATE), and nothing repaints until we yield the
+        // message loop, so the brief non-topmost state isn't visible.
+        let _ = win.set_always_on_top(false);
+        let _ = win.set_always_on_top(true);
     }
 }
 
@@ -179,27 +183,14 @@ fn capture_foreground_hwnd(state: &Arc<AppState>) -> Option<isize> {
     }
 }
 
-fn spawn_duck(state: &Arc<AppState>) {
+fn spawn_ocr(state: &Arc<AppState>, app: &tauri::AppHandle, hwnd_val: isize) {
     let state_clone = state.clone();
+    let app = app.clone();
     std::thread::spawn(move || {
-        let started = std::time::Instant::now();
-        match audio_ducking::duck_other_sessions() {
-            Ok(pids) => {
-                eprintln!(
-                    "[whispin] ducked {} session(s) ({} ms)",
-                    pids.len(),
-                    started.elapsed().as_millis()
-                );
-                *state_clone.ducked_pids.lock() = pids;
-            }
-            Err(e) => eprintln!("[whispin] duck failed: {e}"),
-        }
-    });
-}
-
-fn spawn_ocr(state: &Arc<AppState>, hwnd_val: isize) {
-    let state_clone = state.clone();
-    std::thread::spawn(move || {
+        // The focus frame is already shown by the caller. Run the "reading"
+        // sweep only while OCR is actually happening; the frame itself stays up
+        // until recording stops (hidden in notify_recording_stopped).
+        crate::scan_overlay::set_reading(&app, true);
         let started = std::time::Instant::now();
         match ocr::capture_and_ocr(hwnd_val) {
             Ok(raw) => {
@@ -214,5 +205,13 @@ fn spawn_ocr(state: &Arc<AppState>, hwnd_val: isize) {
             }
             Err(e) => eprintln!("[whispin] OCR failed: {e}"),
         }
+        // Keep the reading sweep visible long enough to register, even if OCR
+        // was near-instant.
+        const MIN_READING: std::time::Duration = std::time::Duration::from_millis(900);
+        let elapsed = started.elapsed();
+        if elapsed < MIN_READING {
+            std::thread::sleep(MIN_READING - elapsed);
+        }
+        crate::scan_overlay::set_reading(&app, false);
     });
 }

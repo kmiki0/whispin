@@ -2,6 +2,7 @@
 // short-text skip threshold, request timeout.
 
 import { $ } from "./dom";
+import { hasOpenRouterKey } from "./api-keys-section";
 import type { LlmConfig } from "./types";
 
 const DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct";
@@ -14,6 +15,8 @@ let llmShort: HTMLInputElement;
 let llmShortVal: HTMLSpanElement;
 let llmTimeout: HTMLInputElement;
 let llmTimeoutVal: HTMLSpanElement;
+let llmKeyWarn: HTMLParagraphElement;
+let dependentEls: HTMLElement[];
 let presets: Set<string>;
 
 export function initLlmSection() {
@@ -25,6 +28,10 @@ export function initLlmSection() {
   llmShortVal = $<HTMLSpanElement>("#llm-short-val");
   llmTimeout = $<HTMLInputElement>("#llm-timeout");
   llmTimeoutVal = $<HTMLSpanElement>("#llm-timeout-val");
+  llmKeyWarn = $<HTMLParagraphElement>("#llm-key-warn");
+  dependentEls = Array.from(
+    document.querySelectorAll<HTMLElement>("[data-llm-dependent]"),
+  );
 
   presets = new Set(
     Array.from(llmModelSelect.options)
@@ -43,6 +50,7 @@ export function initLlmSection() {
   llmTimeout.addEventListener("input", () => {
     llmTimeoutVal.textContent = `${llmTimeout.value} 秒`;
   });
+  llmEnabled.addEventListener("change", reflectEnabledState);
 }
 
 export function applyLlmConfig(c: LlmConfig) {
@@ -53,6 +61,22 @@ export function applyLlmConfig(c: LlmConfig) {
   llmShortVal.textContent = `${c.short_threshold_chars} 文字`;
   llmTimeout.value = String(c.timeout_secs);
   llmTimeoutVal.textContent = `${c.timeout_secs} 秒`;
+  reflectEnabledState();
+}
+
+/// Grey out and disable every dependent control when AI correction is off, and
+/// surface the OpenRouter-key warning (all models route through OpenRouter).
+export function reflectEnabledState() {
+  const on = llmEnabled.checked;
+  for (const el of dependentEls) {
+    el.classList.toggle("dimmed", !on);
+    el.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+      "input, select",
+    ).forEach((c) => {
+      c.disabled = !on;
+    });
+  }
+  llmKeyWarn.hidden = !(on && !hasOpenRouterKey());
 }
 
 export function readLlmConfig(): LlmConfig {

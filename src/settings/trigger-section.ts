@@ -10,12 +10,11 @@ const THRESHOLD_STEPS = [150, 250, 400, 600];
 const THRESHOLD_LABELS = ["速い", "標準", "遅め", "ゆっくり"];
 
 const DEFAULT_HINT =
-  "「キャプチャ」を押して、設定したいキーまたはマウスボタンを押してください。";
+  "ボックスをクリックして、設定したいキーまたはマウスボタンを押してください。";
 
-let currentEl: HTMLDivElement;
+let currentEl: HTMLButtonElement;
 let thresholdRange: HTMLInputElement;
 let thresholdValueEl: HTMLSpanElement;
-let captureBtn: HTMLButtonElement;
 let captureHint: HTMLParagraphElement;
 
 let triggerInput: TriggerInput = { kind: "mouse", button: "Right" };
@@ -24,10 +23,9 @@ let capturing = false;
 let pendingModifier: KeyboardEvent | null = null;
 
 export function initTriggerSection() {
-  currentEl = $<HTMLDivElement>("#current-trigger");
+  currentEl = $<HTMLButtonElement>("#current-trigger");
   thresholdRange = $<HTMLInputElement>("#threshold");
   thresholdValueEl = $<HTMLSpanElement>("#threshold-value");
-  captureBtn = $<HTMLButtonElement>("#capture-key");
   captureHint = $<HTMLParagraphElement>("#capture-hint");
 
   paintTrigger();
@@ -36,7 +34,9 @@ export function initTriggerSection() {
   thresholdRange.addEventListener("input", () => {
     paintThreshold(Number(thresholdRange.value));
   });
-  captureBtn.addEventListener("click", (e) => {
+  // The label box itself is the capture control: click to start, click again
+  // (or Esc) to cancel.
+  currentEl.addEventListener("click", (e) => {
     e.preventDefault();
     if (capturing) stopCapture();
     else startCapture();
@@ -123,13 +123,19 @@ function startCapture() {
   pendingModifier = null;
   currentEl.classList.add("capturing");
   currentEl.textContent = "次の入力を待っています...";
-  captureBtn.textContent = "中止";
   captureHint.textContent =
     "キー / Shift+M のような組合せ / マウスボタンを押下 (Esc でキャンセル)";
   window.addEventListener("keydown", onCaptureKeyDown, true);
   window.addEventListener("keyup", onCaptureKeyUp, true);
   window.addEventListener("mousedown", onCaptureMouse, true);
   window.addEventListener("contextmenu", suppressContext, true);
+  // If the window loses focus mid-capture, abort so we don't stay stuck
+  // listening for input the user can no longer see.
+  window.addEventListener("blur", onCaptureBlur, true);
+}
+
+function onCaptureBlur() {
+  if (capturing) stopCapture();
 }
 
 function stopCapture() {
@@ -137,12 +143,12 @@ function stopCapture() {
   pendingModifier = null;
   currentEl.classList.remove("capturing");
   paintTrigger();
-  captureBtn.textContent = "キャプチャ";
   captureHint.textContent = DEFAULT_HINT;
   window.removeEventListener("keydown", onCaptureKeyDown, true);
   window.removeEventListener("keyup", onCaptureKeyUp, true);
   window.removeEventListener("mousedown", onCaptureMouse, true);
   window.removeEventListener("contextmenu", suppressContext, true);
+  window.removeEventListener("blur", onCaptureBlur, true);
 }
 
 function isModifierKey(k: string): boolean {
@@ -197,7 +203,9 @@ function onCaptureKeyUp(e: KeyboardEvent) {
 function onCaptureMouse(e: MouseEvent) {
   if (!capturing) return;
   const target = e.target as HTMLElement | null;
-  if (target?.closest("#capture-key, #cancel, #save")) return;
+  // Footer buttons stay clickable; everything else — including the trigger box
+  // itself — is fair game as a mouse-button trigger.
+  if (target?.closest("#cancel, #save")) return;
   e.preventDefault();
   e.stopPropagation();
   const button = buttonFromMouseEvent(e.button);
@@ -210,7 +218,31 @@ function onCaptureMouse(e: MouseEvent) {
     alt: e.altKey,
     win: e.metaKey,
   };
+  // This mousedown will be followed by a click (or contextmenu for right-click)
+  // landing on the box. Swallow it so it doesn't immediately restart capture
+  // via the box's own click handler.
+  swallowNextMouseEvent();
   stopCapture();
+}
+
+/// Suppress the next click/contextmenu (whichever the just-captured button
+/// produces) so it doesn't reach the trigger box. Self-cleans on a timeout in
+/// case the button (e.g. X1/X2) produces neither.
+function swallowNextMouseEvent() {
+  let timer = 0;
+  const handler = (ev: Event) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    done();
+  };
+  const done = () => {
+    window.removeEventListener("click", handler, true);
+    window.removeEventListener("contextmenu", handler, true);
+    if (timer) window.clearTimeout(timer);
+  };
+  window.addEventListener("click", handler, true);
+  window.addEventListener("contextmenu", handler, true);
+  timer = window.setTimeout(done, 400);
 }
 
 function buttonFromMouseEvent(button: number): MouseButton | null {

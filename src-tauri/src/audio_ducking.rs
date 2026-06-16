@@ -3,11 +3,14 @@
 
 #![cfg(windows)]
 
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Sender};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, Result};
 use parking_lot::Mutex;
+
+use crate::state::AppState;
 use windows::core::Interface;
 use windows::Win32::Media::Audio::{
     eMultimedia, eRender, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator,
@@ -28,11 +31,23 @@ use windows::Win32::System::Threading::GetCurrentProcessId;
 // with nobody left to un-mute them — other apps stayed muted forever.
 //
 // Both operations now go through a single worker thread fed by a FIFO channel.
-// Press enqueues Duck, release/stop enqueues Restore; FIFO guarantees a
-// Restore always runs *after* the Duck enqueued before it. The worker owns the
-// muted-PID list (no shared-state race), and every Duck first restores any
-// still-muted leftovers from a previous cycle that never got its Restore — so a
-// dropped Restore can no longer leak a permanent mute.
+// Press enqueues Duck, release/stop enqueues Restore. The worker owns the
+// muted-PID list (no shared-state race on it).
+//
+// FIFO alone is NOT enough: Duck and Restore are enqueued from two different
+// callback threads (on_trigger_pressed / on_trigger_released), so a very quick
+// tap can invert their order and a Restore can be dequeued before its Duck.
+// Two backstops close that gap:
+//   1. After ducking, the worker re-checks `is_recording`. If the recording has
+//      already ended (the Restore was processed first, or finished mid-duck),
+//      it un-mutes immediately — so an inverted pair self-heals.
+//   2. Every Duck first restores any still-muted leftovers from a previous
+//      cycle, so even a fully-dropped Restore can't accumulate a permanent mute
+//      (it's cleaned up on the next recording).
+// A fully order-independent fix would assign the duck/restore pair an id on the
+// (physically-ordered) input-hook thread; that's a larger change left as a
+// follow-up. In practice (1)+(2) make a stuck mute unreachable for any normal
+// tap timing.
 // ---------------------------------------------------------------------------
 
 enum AudioCmd {
@@ -43,7 +58,9 @@ enum AudioCmd {
 static AUDIO_TX: OnceLock<Mutex<Sender<AudioCmd>>> = OnceLock::new();
 
 /// Start the audio-duck worker thread. Idempotent — a second call is a no-op.
-pub fn init() {
+/// `state` is read to tell whether a recording is still active when a duck
+/// completes (see backstop 1 above).
+pub fn init(state: Arc<AppState>) {
     let (tx, rx) = channel::<AudioCmd>();
     if AUDIO_TX.set(Mutex::new(tx)).is_err() {
         return; // already started
@@ -57,9 +74,8 @@ pub fn init() {
             while let Ok(cmd) = rx.recv() {
                 match cmd {
                     AudioCmd::Duck => {
-                        // Safety net: if a prior cycle's Restore was lost, those
-                        // sessions are still muted — un-mute them before ducking
-                        // again so we never accumulate a permanent mute.
+                        // Backstop 2: un-mute any leftovers from a prior cycle
+                        // whose Restore was lost, before ducking again.
                         if !ducked.is_empty() {
                             let _ = restore_sessions(&ducked);
                             ducked.clear();
@@ -70,6 +86,19 @@ pub fn init() {
                                 ducked = pids;
                             }
                             Err(e) => eprintln!("[whispin] duck failed: {e}"),
+                        }
+                        // Backstop 1: if the recording already ended (a quick
+                        // tap whose Restore raced ahead of this Duck), restore
+                        // right away instead of leaving other apps muted.
+                        if !ducked.is_empty() && !state.is_recording.load(Ordering::SeqCst) {
+                            let n = ducked.len();
+                            match restore_sessions(&ducked) {
+                                Ok(()) => eprintln!(
+                                    "[whispin] restored {n} session(s) (recording already ended)"
+                                ),
+                                Err(e) => eprintln!("[whispin] restore failed: {e}"),
+                            }
+                            ducked.clear();
                         }
                     }
                     AudioCmd::Restore => {

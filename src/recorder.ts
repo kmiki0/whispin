@@ -240,21 +240,29 @@ export async function prewarmMic(): Promise<void> {
 export async function startRecording() {
   cancelHide();
   if (mediaRecorder && mediaRecorder.state !== "inactive") return;
+  // Claim the pre-warmed stream synchronously, before any await below. A
+  // concurrent prewarmMic() (e.g. the re-warm fired by a just-finished take)
+  // could otherwise assign a fresh stream to warmStream mid-await that we'd then
+  // null out without stopping — leaking a live mic track. By capturing it now we
+  // own `warmed`: we either record with it or stop it, and any later warm stream
+  // is left intact for the next take.
+  const warmed = warmStream;
+  const warmedMicId = warmMicId;
+  warmStream = null;
+  warmMicId = null;
   try {
     const { micId } = await loadConfigs();
     // Reuse the pre-warmed stream when it still matches the configured mic and
     // is live — this skips getUserMedia on the hot path so capture starts in
     // parallel with the notch appearing. Otherwise acquire one now.
-    if (warmStream && warmMicId === micId && streamLive(warmStream)) {
-      activeStream = warmStream;
+    if (warmed && warmedMicId === micId && streamLive(warmed)) {
+      activeStream = warmed;
     } else {
-      if (warmStream) {
-        warmStream.getTracks().forEach((t) => t.stop());
+      if (warmed) {
+        warmed.getTracks().forEach((t) => t.stop());
       }
       activeStream = await acquireMicStream(micId);
     }
-    warmStream = null;
-    warmMicId = null;
     const recordingStream = setupAudioGraph(activeStream);
     if (!recordingStream) {
       throw new Error("audio graph setup failed");

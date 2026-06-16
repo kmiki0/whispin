@@ -27,7 +27,7 @@ pub fn run_setup(
     let _ = dictionary::load(app.handle());
 
     // Start the serialized audio-duck worker before any trigger can fire.
-    audio_ducking::init();
+    audio_ducking::init(state_for_shortcut.clone());
 
     install_tray(app)?;
     place_main_window(app);
@@ -128,9 +128,9 @@ fn on_trigger_released(app: &tauri::AppHandle, state: &Arc<AppState>) {
     eprintln!("[whispin] PTT released");
     state.is_recording.store(false, Ordering::SeqCst);
     emit(app, "stop-recording");
-    // Hand restore to the serialized audio worker. It runs after this session's
-    // duck completes, so a quick tap can't restore an empty set and leave other
-    // apps muted.
+    // Hand restore to the serialized audio worker. If a quick tap inverts the
+    // duck/restore order, the worker's post-duck is_recording check restores
+    // anyway (see audio_ducking backstops).
     audio_ducking::request_restore();
 }
 

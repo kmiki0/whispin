@@ -26,6 +26,7 @@ export function initAppSection() {
   micTestBtn = $<HTMLButtonElement>("#mic-test");
   micMeterFill = $<HTMLDivElement>("#mic-meter-fill");
   const appOpenFolder = $<HTMLButtonElement>("#app-open-folder");
+  const appRestoreAudio = $<HTMLButtonElement>("#app-restore-audio");
   const appUninstall = $<HTMLButtonElement>("#app-uninstall");
 
   micTestBtn.addEventListener("click", () =>
@@ -47,6 +48,15 @@ export function initAppSection() {
       await invoke("open_settings_folder");
     } catch (e) {
       flash(`フォルダを開けません: ${e}`, true);
+    }
+  });
+
+  appRestoreAudio.addEventListener("click", async () => {
+    try {
+      const msg = await invoke<string>("force_restore_audio");
+      flash(typeof msg === "string" && msg ? msg : "音声を復元しました");
+    } catch (e) {
+      flash(`音声の復元に失敗: ${e}`, true);
     }
   });
 

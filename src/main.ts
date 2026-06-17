@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { initNotch, setStatus, scheduleHide } from "./notch";
-import { startRecording, stopRecording } from "./recorder";
+import { startRecording, stopRecording, prewarmMic } from "./recorder";
 import { initCanvas } from "./visualizer";
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -17,6 +17,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
   listen("start-recording", () => startRecording());
   listen("stop-recording", () => stopRecording());
+
+  // Warm the mic up front so the first trigger press starts capturing without a
+  // getUserMedia stall (runs in parallel with the startup show below).
+  void prewarmMic();
   listen("correction-started", () => setStatus("correcting"));
   // We accept correction-chunk events but don't render them; the static
   // "Correcting..." label is enough.

@@ -2,14 +2,16 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for main + settings windows",
-  "windows": ["main", "settings"],
+  "windows": ["main", "settings", "scan"],
   "permissions": [
     "core:default",
     "core:event:default",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:webview:allow-create-webview-window",
-    "clipboard-manager:allow-write-text"
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text"
   ]
 }

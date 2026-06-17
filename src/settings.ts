@@ -1,5 +1,6 @@
 // Settings window entry point. Initializes each section, loads current
-// config from Rust, wires up Save/Cancel buttons.
+// config from Rust, wires up Save/Cancel/Reset buttons, and guards against
+// losing unsaved edits.
 
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -8,6 +9,7 @@ import { $, flash, initFlash, installSectionNav } from "./settings/dom";
 import {
   applyApiKeys,
   initApiKeysSection,
+  onApiKeysChanged,
   readApiKeys,
 } from "./settings/api-keys-section";
 import {
@@ -20,6 +22,7 @@ import {
   applyLlmConfig,
   initLlmSection,
   readLlmConfig,
+  reflectEnabledState,
 } from "./settings/llm-section";
 import {
   applyRecordingConfig,
@@ -27,6 +30,7 @@ import {
   readRecordingConfig,
 } from "./settings/recording-section";
 import {
+  applyMicDeviceId,
   applyStartupEnabled,
   initAppSection,
   populateMicList,
@@ -85,7 +89,35 @@ async function tryInvoke<T>(cmd: string, fallback: T): Promise<T> {
   }
 }
 
+// --- Unsaved-change tracking ---
+// Compare a serialized snapshot of every section against the last-saved one.
+let savedSnapshot = "";
+
+function snapshot(): string {
+  return JSON.stringify({
+    trigger: readTriggerConfig(),
+    apiKeys: readApiKeys(),
+    llm: readLlmConfig(),
+    mic: readMicDeviceId(),
+    recording: readRecordingConfig(),
+    startup: readStartupEnabled(),
+    dictionary: readDictionary(),
+  });
+}
+
+function isDirty(): boolean {
+  return savedSnapshot !== "" && snapshot() !== savedSnapshot;
+}
+
+let saving = false;
+
 async function saveAll() {
+  if (saving) return;
+  saving = true;
+  const saveBtn = $<HTMLButtonElement>("#save");
+  saveBtn.disabled = true;
+  const label = saveBtn.textContent;
+  saveBtn.textContent = "保存中…";
   try {
     await invoke("set_trigger_config", { config: readTriggerConfig() });
     await invoke("set_api_keys", { keys: readApiKeys() });
@@ -105,9 +137,14 @@ async function saveAll() {
       entries,
     });
     applyDictionary(saved);
+    savedSnapshot = snapshot();
     flash("保存しました");
   } catch (e) {
     flash(`保存失敗: ${e}`, true);
+  } finally {
+    saving = false;
+    saveBtn.disabled = false;
+    saveBtn.textContent = label;
   }
 }
 
@@ -140,6 +177,25 @@ async function loadAll() {
 
   applyStartupEnabled(await tryInvoke<boolean>("get_startup_enabled", false));
   setAppVersion(await tryInvoke<string>("get_app_version", "—"));
+
+  // The freshly-loaded state is, by definition, "saved".
+  savedSnapshot = snapshot();
+}
+
+/// Reset behavioral settings to defaults. Deliberately leaves API keys and the
+/// dictionary alone — those are user data, not preferences. Not persisted until
+/// the user hits Save.
+function resetDefaults() {
+  const ok = window.confirm(
+    "トリガー・録音モード・AI校正・マイク選択・自動起動を初期値に戻します。\n\nAPIキーと辞書は変更しません。保存するまで適用されません。続けますか?",
+  );
+  if (!ok) return;
+  applyTriggerConfig(DEFAULTS.trigger);
+  applyLlmConfig(DEFAULTS.llm);
+  applyRecordingConfig(DEFAULTS.recording);
+  applyMicDeviceId("");
+  applyStartupEnabled(false);
+  flash("初期値に戻しました (保存で適用)");
 }
 
 // --- Wiring ---
@@ -153,11 +209,50 @@ initDictionarySection();
 initAppSection();
 installSectionNav();
 
+// Keep the AI-correction key warning in sync with the OpenRouter key field.
+onApiKeysChanged(reflectEnabledState);
+
 $<HTMLButtonElement>("#save").addEventListener("click", saveAll);
-$<HTMLButtonElement>("#cancel").addEventListener("click", () => {
+$<HTMLButtonElement>("#reset-defaults").addEventListener("click", resetDefaults);
+
+// --- Close flow with an in-page unsaved-changes confirm ---
+// (window.confirm is unreliable inside the Tauri webview, so we use our own
+// modal instead.)
+let allowClose = false;
+const modal = $<HTMLDivElement>("#confirm-modal");
+
+function doClose() {
+  allowClose = true;
+  // destroy() force-closes without firing close-requested, so it can't be
+  // blocked by a close-requested handler.
   getCurrentWindow()
-    .close()
+    .destroy()
     .catch((e) => console.error("close failed", e));
+}
+
+function requestClose() {
+  if (isDirty()) modal.hidden = false;
+  else doClose();
+}
+
+$<HTMLButtonElement>("#cancel").addEventListener("click", requestClose);
+$<HTMLButtonElement>("#modal-cancel").addEventListener("click", () => {
+  modal.hidden = true;
 });
+$<HTMLButtonElement>("#modal-discard").addEventListener("click", doClose);
+$<HTMLButtonElement>("#modal-save").addEventListener("click", async () => {
+  await saveAll();
+  doClose();
+});
+
+// Intercept the window's X button: block it once to show the modal, unless the
+// user already chose to close (allowClose) or there's nothing unsaved.
+getCurrentWindow()
+  .onCloseRequested((event) => {
+    if (allowClose || !isDirty()) return;
+    event.preventDefault();
+    modal.hidden = false;
+  })
+  .catch((e) => console.error("onCloseRequested failed", e));
 
 loadAll();

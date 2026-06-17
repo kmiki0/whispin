@@ -295,6 +295,43 @@ async fn run_whisper(
     }
 }
 
+/// Validate an API key for one provider with a cheap authenticated GET (no
+/// audio upload). Used by the settings "接続テスト" buttons. An empty `key`
+/// falls back to the provider's env var, mirroring runtime key resolution.
+#[tauri::command]
+pub async fn test_api_key(provider: String, key: String) -> Result<String, String> {
+    let (url, env_var) = match provider.as_str() {
+        "openrouter" => ("https://openrouter.ai/api/v1/key", "OPENROUTER_API_KEY"),
+        "groq" => ("https://api.groq.com/openai/v1/models", "GROQ_API_KEY"),
+        "openai" => ("https://api.openai.com/v1/models", "OPENAI_API_KEY"),
+        other => return Err(format!("unknown provider: {other}")),
+    };
+    let key = match resolve_key(&key, env_var) {
+        Some(k) => k,
+        None => return Err("キーが未入力です (環境変数も未設定)".to_string()),
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("client build failed: {e}"))?;
+    let resp = client
+        .get(url)
+        .bearer_auth(&key)
+        .send()
+        .await
+        .map_err(|e| format!("接続できません: {e}"))?;
+
+    let status = resp.status();
+    if status.is_success() {
+        Ok("接続成功".to_string())
+    } else if status.as_u16() == 401 || status.as_u16() == 403 {
+        Err("キーが無効です (認証エラー)".to_string())
+    } else {
+        Err(format!("エラー: HTTP {}", status.as_u16()))
+    }
+}
+
 fn paste_via_keyboard() -> Result<(), Box<dyn std::error::Error>> {
     use enigo::{Direction, Enigo, Key, Keyboard, Settings};
     let mut enigo = Enigo::new(&Settings::default())?;

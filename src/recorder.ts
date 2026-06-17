@@ -23,6 +23,10 @@ const DEFAULT_RECORDING_CONFIG: RecordingConfig = {
 
 const SILENCE_LEVEL_THRESHOLD = 0.04;
 const SILENCE_GRACE_MS = 600;
+// If the loudest moment of the whole take stays below this, treat it as "no
+// speech" and skip transcription entirely. Whisper otherwise hallucinates text
+// (e.g. "ご視聴ありがとうございました") on silent / near-silent audio.
+const SPEECH_PEAK_THRESHOLD = 0.12;
 
 let mediaRecorder: MediaRecorder | null = null;
 let activeStream: MediaStream | null = null;
@@ -32,10 +36,18 @@ let analyser: AnalyserNode | null = null;
 let analyserBuffer: Uint8Array | null = null;
 let rafId: number | null = null;
 let currentLevel = 0;
+let peakLevel = 0;
 
 let activeRecordingConfig: RecordingConfig = DEFAULT_RECORDING_CONFIG;
 let silenceStartMs = 0;
 let recordingStartedAt = 0;
+
+// Pre-warmed mic stream. getUserMedia() can stall 100-500ms (device wake +
+// permission + AGC negotiation), which clips the first words when acquired on
+// the hot path. We acquire once at startup and keep it live so a trigger press
+// starts capture in parallel with the notch appearing, not after it.
+let warmStream: MediaStream | null = null;
+let warmMicId: string | null = null;
 
 function setupAudioGraph(stream: MediaStream): MediaStream | null {
   try {
@@ -92,6 +104,7 @@ function tick() {
   // Fast attack / slow release for natural breathing.
   const alpha = raw > currentLevel ? 0.5 : 0.15;
   currentLevel = currentLevel + (raw - currentLevel) * alpha;
+  if (currentLevel > peakLevel) peakLevel = currentLevel;
   pushSample(currentLevel);
   maybeAutoStopOnSilence();
   rafId = requestAnimationFrame(tick);
@@ -143,16 +156,59 @@ function pickMimeType(): string {
   return "";
 }
 
-async function loadConfigs(): Promise<{ micId: string }> {
-  let micId = "";
+function micConstraints(micId: string): MediaTrackConstraints {
+  const constraints: MediaTrackConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    // OS-level AGC off so the visualizer sees raw amplitude. The recording
+    // branch has its own software AGC (compressor+gain).
+    autoGainControl: false,
+  };
+  if (micId) {
+    constraints.deviceId = { exact: micId };
+  }
+  return constraints;
+}
+
+async function acquireMicStream(micId: string): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: micConstraints(micId),
+    });
+  } catch (e) {
+    // The pinned mic may have been unplugged. Rather than fail the whole
+    // recording, fall back to the OS default device.
+    if (micId) {
+      console.warn(
+        "[whispin] selected mic unavailable; falling back to default",
+        e,
+      );
+      return await navigator.mediaDevices.getUserMedia({
+        audio: micConstraints(""),
+      });
+    }
+    throw e;
+  }
+}
+
+function streamLive(stream: MediaStream): boolean {
+  return stream.getAudioTracks().some((t) => t.readyState === "live");
+}
+
+async function loadMicId(): Promise<string> {
   try {
     const general = await invoke<{ mic_device_id: string }>(
       "get_general_config",
     );
-    micId = general?.mic_device_id || "";
+    return general?.mic_device_id || "";
   } catch {
     // not available; fall back to default mic
+    return "";
   }
+}
+
+async function loadConfigs(): Promise<{ micId: string }> {
+  const micId = await loadMicId();
   try {
     activeRecordingConfig = await invoke<RecordingConfig>(
       "get_recording_config",
@@ -163,24 +219,50 @@ async function loadConfigs(): Promise<{ micId: string }> {
   return { micId };
 }
 
+// Acquire the mic ahead of time (at startup and after each take) so the next
+// trigger press can start recording without waiting on getUserMedia.
+export async function prewarmMic(): Promise<void> {
+  if (warmStream && streamLive(warmStream)) return;
+  try {
+    const micId = await loadMicId();
+    warmStream = await acquireMicStream(micId);
+    warmMicId = micId;
+  } catch (e) {
+    console.warn(
+      "[whispin] mic prewarm failed (will acquire on demand)",
+      e,
+    );
+    warmStream = null;
+    warmMicId = null;
+  }
+}
+
 export async function startRecording() {
   cancelHide();
   if (mediaRecorder && mediaRecorder.state !== "inactive") return;
+  // Claim the pre-warmed stream synchronously, before any await below. A
+  // concurrent prewarmMic() (e.g. the re-warm fired by a just-finished take)
+  // could otherwise assign a fresh stream to warmStream mid-await that we'd then
+  // null out without stopping — leaking a live mic track. By capturing it now we
+  // own `warmed`: we either record with it or stop it, and any later warm stream
+  // is left intact for the next take.
+  const warmed = warmStream;
+  const warmedMicId = warmMicId;
+  warmStream = null;
+  warmMicId = null;
   try {
     const { micId } = await loadConfigs();
-    const audioConstraints: MediaTrackConstraints = {
-      echoCancellation: true,
-      noiseSuppression: true,
-      // OS-level AGC off so the visualizer sees raw amplitude. The recording
-      // branch has its own software AGC (compressor+gain).
-      autoGainControl: false,
-    };
-    if (micId) {
-      audioConstraints.deviceId = { exact: micId };
+    // Reuse the pre-warmed stream when it still matches the configured mic and
+    // is live — this skips getUserMedia on the hot path so capture starts in
+    // parallel with the notch appearing. Otherwise acquire one now.
+    if (warmed && warmedMicId === micId && streamLive(warmed)) {
+      activeStream = warmed;
+    } else {
+      if (warmed) {
+        warmed.getTracks().forEach((t) => t.stop());
+      }
+      activeStream = await acquireMicStream(micId);
     }
-    activeStream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConstraints,
-    });
     const recordingStream = setupAudioGraph(activeStream);
     if (!recordingStream) {
       throw new Error("audio graph setup failed");
@@ -198,11 +280,15 @@ export async function startRecording() {
     mediaRecorder.start();
     recordingStartedAt = performance.now();
     silenceStartMs = recordingStartedAt;
+    peakLevel = 0;
     setStatus("recording");
   } catch (e) {
     console.error("startRecording failed", e);
     setStatus("error", `mic: ${(e as Error).message}`);
     scheduleHide(2000);
+    // Recording never started — make sure the screen-context overlay is taken
+    // down and state is reset.
+    invoke("notify_recording_stopped").catch(() => undefined);
   }
 }
 
@@ -222,6 +308,9 @@ async function handleStop() {
   chunks = [];
   activeStream?.getTracks().forEach((t) => t.stop());
   activeStream = null;
+  // Re-warm for the next take (keeps the mic ready so subsequent presses also
+  // start instantly).
+  void prewarmMic();
 
   invoke("notify_recording_stopped").catch((e) =>
     console.error("notify_recording_stopped failed", e),
@@ -230,6 +319,17 @@ async function handleStop() {
   if (blob.size < 1000) {
     setStatus("error", "too short");
     scheduleHide(1200);
+    return;
+  }
+
+  // No clear speech in the whole take → skip ASR so Whisper can't hallucinate
+  // text onto silence.
+  if (peakLevel < SPEECH_PEAK_THRESHOLD) {
+    console.log(
+      `[whispin] no speech detected (peak ${peakLevel.toFixed(3)}) — skipping transcription`,
+    );
+    setStatus("done", "🙊");
+    scheduleHide(1000);
     return;
   }
 

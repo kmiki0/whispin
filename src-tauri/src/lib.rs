@@ -18,6 +18,8 @@ mod dictionary;
 #[cfg(windows)]
 mod ocr;
 #[cfg(windows)]
+mod scan_overlay;
+#[cfg(windows)]
 mod settings;
 #[cfg(windows)]
 mod setup;
@@ -42,19 +44,13 @@ use crate::state::AppState;
 /// MediaRecorder actually finishes.
 #[tauri::command]
 #[cfg(windows)]
-fn notify_recording_stopped(state: tauri::State<'_, Arc<AppState>>) {
+fn notify_recording_stopped(app: tauri::AppHandle, state: tauri::State<'_, Arc<AppState>>) {
     use std::sync::atomic::Ordering;
+    // Recording ended → take down the screen-context focus overlay.
+    scan_overlay::hide(&app);
     state.is_recording.store(false, Ordering::SeqCst);
-    let pids = std::mem::take(&mut *state.ducked_pids.lock());
-    if !pids.is_empty() {
-        std::thread::spawn(move || {
-            if let Err(e) = audio_ducking::restore_sessions(&pids) {
-                eprintln!("[whispin] restore failed: {e}");
-            } else {
-                eprintln!("[whispin] restored {} session(s)", pids.len());
-            }
-        });
-    }
+    // Restore via the serialized audio worker (Toggle mode / auto-stop path).
+    audio_ducking::request_restore();
 }
 
 #[tauri::command]
@@ -108,6 +104,7 @@ pub fn run() {
     #[cfg(windows)]
     let builder = builder.manage(state).invoke_handler(tauri::generate_handler![
         transcribe::transcribe,
+        transcribe::test_api_key,
         settings::get_trigger_config,
         settings::set_trigger_config,
         settings::get_api_keys,

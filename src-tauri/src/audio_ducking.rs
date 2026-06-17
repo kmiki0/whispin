@@ -144,12 +144,12 @@ pub fn init(state: Arc<AppState>) {
 /// thread. Intended for the app-exit path: the channel-fed worker may never be
 /// scheduled again during shutdown, so a queued Restore can be lost and leave
 /// other apps (e.g. a browser) quiet for good. Restore is idempotent, so this
-/// racing the worker is harmless.
-pub fn restore_now_blocking() {
-    let Some(muted) = MUTED.get() else { return };
+/// racing the worker is harmless. Returns how many ducked sessions it restored.
+pub fn restore_now_blocking() -> usize {
+    let Some(muted) = MUTED.get() else { return 0 };
     let mut ducked = muted.lock();
     if ducked.is_empty() {
-        return;
+        return 0;
     }
     let n = ducked.len();
     match restore_sessions(&ducked) {
@@ -157,6 +157,7 @@ pub fn restore_now_blocking() {
         Err(e) => eprintln!("[whispin] exit restore failed: {e}"),
     }
     ducked.clear();
+    n
 }
 
 /// Emergency "give me my audio back", used by the settings safety button.
@@ -164,11 +165,12 @@ pub fn restore_now_blocking() {
 /// every other session on the default render endpoint — a blanket net that also
 /// recovers stuck mutes left by older hard-mute builds or lost-restore edge
 /// cases. Only the mute flag is cleared on untracked sessions; their volume is
-/// left as-is (we never captured an original to restore). Returns how many
-/// sessions it un-muted.
-pub fn force_restore_all() -> Result<usize> {
+/// left as-is (we never captured an original to restore). Returns
+/// (volume_restored, unmuted): how many ducked sessions had their volume
+/// restored, and how many muted sessions were un-muted.
+pub fn force_restore_all() -> Result<(usize, usize)> {
     // Precisely restore volumes for sessions we ducked this run.
-    restore_now_blocking();
+    let restored = restore_now_blocking();
 
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -211,8 +213,10 @@ pub fn force_restore_all() -> Result<usize> {
                 unmuted += 1;
             }
         }
-        eprintln!("[whispin] force-restore: un-muted {unmuted} session(s)");
-        Ok(unmuted)
+        eprintln!(
+            "[whispin] force-restore: volume-restored {restored}, un-muted {unmuted} session(s)"
+        );
+        Ok((restored, unmuted))
     }
 }
 

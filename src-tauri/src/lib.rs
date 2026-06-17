@@ -64,7 +64,9 @@ fn get_app_version() -> String {
 #[cfg(windows)]
 fn force_restore_audio() -> Result<String, String> {
     match audio_ducking::force_restore_all() {
-        Ok(n) => Ok(format!("音声を復元しました（{n} 件のミュートを解除）")),
+        Ok((restored, unmuted)) => Ok(format!(
+            "音声を復元しました（音量 {restored} 件、ミュート解除 {unmuted} 件）"
+        )),
         Err(e) => Err(e.to_string()),
     }
 }

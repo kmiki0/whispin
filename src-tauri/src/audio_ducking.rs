@@ -1,7 +1,15 @@
-// Mute all other audio sessions on the default render device for the duration
-// of a recording. Tracks which PIDs we muted so we can restore them on release.
+// Duck (lower the volume of) all other audio sessions on the default render
+// device for the duration of a recording, then restore each session's original
+// volume on release. We attenuate volume rather than hard-muting: a stuck mute
+// leaves an app silent until the user un-mutes it by hand, whereas a missed
+// volume restore is both rarer to leave audible damage and never touches the
+// per-app mute flag the user controls.
 
 #![cfg(windows)]
+
+/// Fraction of its own volume each ducked session is lowered to while recording
+/// (0.2 = 20%). Multiplicative, so a session is only ever lowered, never raised.
+const DUCK_LEVEL: f32 = 0.2;
 
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Sender};
@@ -48,6 +56,11 @@ use windows::Win32::System::Threading::GetCurrentProcessId;
 // (physically-ordered) input-hook thread; that's a larger change left as a
 // follow-up. In practice (1)+(2) make a stuck mute unreachable for any normal
 // tap timing.
+//
+// The worker's muted-PID list lives behind `MUTED` (Arc<Mutex<..>>) rather than
+// a thread-local, so an app-exit handler can synchronously un-mute on the way
+// out (see `restore_now_blocking`). The worker is still the only thing that
+// mutes, and restore is idempotent, so the exit path racing the worker is safe.
 // ---------------------------------------------------------------------------
 
 enum AudioCmd {
@@ -56,6 +69,10 @@ enum AudioCmd {
 }
 
 static AUDIO_TX: OnceLock<Mutex<Sender<AudioCmd>>> = OnceLock::new();
+/// Sessions we have ducked and not yet restored, as (pid, original_volume).
+/// Shared so the exit handler can flush it synchronously; the duck worker is
+/// otherwise the sole writer.
+static MUTED: OnceLock<Arc<Mutex<Vec<(u32, f32)>>>> = OnceLock::new();
 
 /// Start the audio-duck worker thread. Idempotent — a second call is a no-op.
 /// `state` is read to tell whether a recording is still active when a duck
@@ -65,15 +82,17 @@ pub fn init(state: Arc<AppState>) {
     if AUDIO_TX.set(Mutex::new(tx)).is_err() {
         return; // already started
     }
+    // Shared muted-PID list (see MUTED docs). Clone for the worker; the original
+    // stays in the static for the exit handler.
+    let muted: Arc<Mutex<Vec<(u32, f32)>>> = Arc::new(Mutex::new(Vec::new()));
+    let _ = MUTED.set(muted.clone());
     let spawned = std::thread::Builder::new()
         .name("whispin-audio-duck".into())
         .spawn(move || {
-            // PIDs this worker has muted and not yet restored. Owned solely by
-            // this thread, so duck/restore can never race on it.
-            let mut ducked: Vec<u32> = Vec::new();
             while let Ok(cmd) = rx.recv() {
                 match cmd {
                     AudioCmd::Duck => {
+                        let mut ducked = muted.lock();
                         // Backstop 2: un-mute any leftovers from a prior cycle
                         // whose Restore was lost, before ducking again.
                         if !ducked.is_empty() {
@@ -83,7 +102,7 @@ pub fn init(state: Arc<AppState>) {
                         match duck_other_sessions() {
                             Ok(pids) => {
                                 eprintln!("[whispin] ducked {} session(s)", pids.len());
-                                ducked = pids;
+                                *ducked = pids;
                             }
                             Err(e) => eprintln!("[whispin] duck failed: {e}"),
                         }
@@ -102,6 +121,7 @@ pub fn init(state: Arc<AppState>) {
                         }
                     }
                     AudioCmd::Restore => {
+                        let mut ducked = muted.lock();
                         if ducked.is_empty() {
                             continue;
                         }
@@ -117,6 +137,86 @@ pub fn init(state: Arc<AppState>) {
         });
     if let Err(e) = spawned {
         eprintln!("[whispin] audio-duck worker spawn failed: {e}");
+    }
+}
+
+/// Synchronously restore every session we ducked, right now, on the calling
+/// thread. Intended for the app-exit path: the channel-fed worker may never be
+/// scheduled again during shutdown, so a queued Restore can be lost and leave
+/// other apps (e.g. a browser) quiet for good. Restore is idempotent, so this
+/// racing the worker is harmless. Returns how many ducked sessions it restored.
+pub fn restore_now_blocking() -> usize {
+    let Some(muted) = MUTED.get() else { return 0 };
+    let mut ducked = muted.lock();
+    if ducked.is_empty() {
+        return 0;
+    }
+    let n = ducked.len();
+    match restore_sessions(&ducked) {
+        Ok(()) => eprintln!("[whispin] restored {n} session(s) on exit"),
+        Err(e) => eprintln!("[whispin] exit restore failed: {e}"),
+    }
+    ducked.clear();
+    n
+}
+
+/// Emergency "give me my audio back", used by the settings safety button.
+/// Restores any sessions this app ducked (to their captured volume) AND un-mutes
+/// every other session on the default render endpoint — a blanket net that also
+/// recovers stuck mutes left by older hard-mute builds or lost-restore edge
+/// cases. Only the mute flag is cleared on untracked sessions; their volume is
+/// left as-is (we never captured an original to restore). Returns
+/// (volume_restored, unmuted): how many ducked sessions had their volume
+/// restored, and how many muted sessions were un-muted.
+pub fn force_restore_all() -> Result<(usize, usize)> {
+    // Precisely restore volumes for sessions we ducked this run.
+    let restored = restore_now_blocking();
+
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+        let enumerator: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+                .map_err(|e| anyhow!("CoCreateInstance(MMDeviceEnumerator): {e}"))?;
+        let device = enumerator
+            .GetDefaultAudioEndpoint(eRender, eMultimedia)
+            .map_err(|e| anyhow!("GetDefaultAudioEndpoint: {e}"))?;
+        let session_manager: IAudioSessionManager2 = device
+            .Activate(CLSCTX_ALL, None)
+            .map_err(|e| anyhow!("device.Activate(IAudioSessionManager2): {e}"))?;
+        let sessions = session_manager
+            .GetSessionEnumerator()
+            .map_err(|e| anyhow!("GetSessionEnumerator: {e}"))?;
+
+        let our_pid = GetCurrentProcessId();
+        let count = sessions.GetCount().map_err(|e| anyhow!("GetCount: {e}"))?;
+        let mut unmuted = 0usize;
+        for i in 0..count {
+            let Ok(session_control) = sessions.GetSession(i) else {
+                continue;
+            };
+            let Ok(session2) = session_control.cast::<IAudioSessionControl2>() else {
+                continue;
+            };
+            let pid = match session2.GetProcessId() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            if pid == our_pid {
+                continue;
+            }
+            let Ok(volume) = session_control.cast::<ISimpleAudioVolume>() else {
+                continue;
+            };
+            let is_muted = matches!(volume.GetMute(), Ok(b) if b.as_bool());
+            if is_muted && volume.SetMute(false, std::ptr::null()).is_ok() {
+                unmuted += 1;
+            }
+        }
+        eprintln!(
+            "[whispin] force-restore: volume-restored {restored}, un-muted {unmuted} session(s)"
+        );
+        Ok((restored, unmuted))
     }
 }
 
@@ -136,11 +236,12 @@ pub fn request_restore() {
     }
 }
 
-/// Mute every audio session on the default render endpoint except our own
-/// process. Returns the PIDs of sessions we muted so they can be restored.
-/// Sessions that were already muted are ignored (so we don't un-mute them
-/// later on accident).
-pub fn duck_other_sessions() -> Result<Vec<u32>> {
+/// Lower the volume of every audio session on the default render endpoint
+/// except our own process to `DUCK_LEVEL` of its current level. Returns
+/// (pid, original_volume) for each session we lowered so it can be restored.
+/// Sessions already at (near) zero are left alone, so restore never raises a
+/// session above where the user had it.
+pub fn duck_other_sessions() -> Result<Vec<(u32, f32)>> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
 
@@ -159,7 +260,7 @@ pub fn duck_other_sessions() -> Result<Vec<u32>> {
 
         let our_pid = GetCurrentProcessId();
         let count = sessions.GetCount().map_err(|e| anyhow!("GetCount: {e}"))?;
-        let mut muted_pids = Vec::new();
+        let mut ducked = Vec::new();
 
         for i in 0..count {
             let Ok(session_control) = sessions.GetSession(i) else {
@@ -178,24 +279,31 @@ pub fn duck_other_sessions() -> Result<Vec<u32>> {
             let Ok(volume) = session_control.cast::<ISimpleAudioVolume>() else {
                 continue;
             };
-            let was_muted = match volume.GetMute() {
-                Ok(b) => b.as_bool(),
+            let original = match volume.GetMasterVolume() {
+                Ok(v) => v,
                 Err(_) => continue,
             };
-            if was_muted {
+            // Already silent → nothing to duck, and recording it would let a
+            // later restore bump it up.
+            if original <= 0.0001 {
                 continue;
             }
-            if volume.SetMute(true, std::ptr::null()).is_ok() {
-                muted_pids.push(pid);
+            if volume
+                .SetMasterVolume(original * DUCK_LEVEL, std::ptr::null())
+                .is_ok()
+            {
+                ducked.push((pid, original));
             }
         }
-        Ok(muted_pids)
+        Ok(ducked)
     }
 }
 
-/// Un-mute every session whose PID matches one in `target_pids`.
-pub fn restore_sessions(target_pids: &[u32]) -> Result<()> {
-    if target_pids.is_empty() {
+/// Restore each session whose PID matches one in `targets` to the original
+/// volume captured at duck time. We only set volume (never the mute flag), so
+/// a user's manual mute is preserved.
+pub fn restore_sessions(targets: &[(u32, f32)]) -> Result<()> {
+    if targets.is_empty() {
         return Ok(());
     }
     unsafe {
@@ -226,13 +334,13 @@ pub fn restore_sessions(target_pids: &[u32]) -> Result<()> {
                 Ok(p) => p,
                 Err(_) => continue,
             };
-            if !target_pids.contains(&pid) {
+            let Some(&(_, original)) = targets.iter().find(|(p, _)| *p == pid) else {
                 continue;
-            }
+            };
             let Ok(volume) = session_control.cast::<ISimpleAudioVolume>() else {
                 continue;
             };
-            let _ = volume.SetMute(false, std::ptr::null());
+            let _ = volume.SetMasterVolume(original, std::ptr::null());
         }
     }
     Ok(())

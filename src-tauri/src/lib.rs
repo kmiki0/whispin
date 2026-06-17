@@ -58,6 +58,19 @@ fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// Settings-screen safety button: restore any audio this app ducked and un-mute
+/// every other session, recovering from a stuck duck/mute.
+#[tauri::command]
+#[cfg(windows)]
+fn force_restore_audio() -> Result<String, String> {
+    match audio_ducking::force_restore_all() {
+        Ok((restored, unmuted)) => Ok(format!(
+            "音声を復元しました（音量 {restored} 件、ミュート解除 {unmuted} 件）"
+        )),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 fn show_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("settings") {
         let _ = win.show();
@@ -123,13 +136,14 @@ pub fn run() {
         startup::uninstall_app,
         notify_recording_stopped,
         get_app_version,
+        force_restore_audio,
         open_settings_window,
     ]);
 
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![get_app_version, open_settings_window]);
 
-    builder
+    let app = builder
         .setup(move |app| {
             #[cfg(windows)]
             {
@@ -139,6 +153,17 @@ pub fn run() {
             let _ = app;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // Drive the event loop ourselves so we can un-mute any ducked audio sessions
+    // when the app exits — otherwise a quit while muted (or with a Restore still
+    // queued) leaves other apps, e.g. a browser, silent until the user un-mutes
+    // them by hand.
+    app.run(move |_app_handle, _event| {
+        #[cfg(windows)]
+        if let tauri::RunEvent::Exit = _event {
+            audio_ducking::restore_now_blocking();
+        }
+    });
 }

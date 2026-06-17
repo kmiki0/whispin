@@ -16,31 +16,34 @@
 <meta name="twitter:image" content="https://kmiki0.github.io/whispin/media/ogp.png" />
 <style>
   :root{
-    --paper:#333846; --paper2:#2e3340; --panel:#3b4152; --ink:#d4cd64; --sub:#a8a473; --rule:#4a5163;
-    --ai:#d4cd64; --ai2:#e2db84; --maxw:1100px;
+    --paper:#333846; --paper2:#2e3340; --panel:#3b4152; --ink:#d4cdcd; --sub:#a39e9e; --rule:#4a5163;
+    --ai:#62c7f2; --ai2:#8ad6f7; --maxw:1100px; --wide:980px; --narrow:720px;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
     --min:var(--sans); --fude:var(--sans);
   }
   *{margin:0;box-sizing:border-box;}
-  html{scroll-behavior:smooth;scroll-padding-top:76px;}
-  body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.8;-webkit-font-smoothing:antialiased;}
+  html{scroll-behavior:smooth;scroll-padding-top:76px;background:#333846;}
+  #led{position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;}
+  body{color:var(--ink);font-family:var(--sans);line-height:1.8;-webkit-font-smoothing:antialiased;background:transparent;}
   a{color:var(--ai);text-decoration:none;}
   .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px;}
-  ::selection{background:rgba(212,205,100,.22);}
+  ::selection{background:rgba(98,199,242,.22);}
 
   /* buttons */
   .btn{display:inline-flex;align-items:center;gap:10px;padding:14px 26px;border-radius:12px;font-weight:700;font-size:15px;border:1.5px solid var(--ink);cursor:pointer;transition:transform .12s,background .12s,color .12s;font-family:var(--sans);}
   .btn:hover{transform:translateY(-2px);}
-  .btn-primary{background:var(--ink);color:var(--paper);}
-  .btn-primary:hover{background:var(--ai);border-color:var(--ai);}
-  .btn-ghost{background:transparent;color:var(--ink);}
-  .btn-ghost:hover{background:var(--ink);color:var(--paper);}
+  .btn-primary{background:var(--ai);color:#10131a;border-color:transparent;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-ghost{background:transparent;color:var(--ai);border-color:var(--ai);}
+  .btn-ghost:hover{background:var(--ai);color:#10131a;}
   .btn svg{width:18px;height:18px;}
   .btn-lg{font-size:16.5px;padding:17px 34px;border-radius:14px;}
   .btn-lg svg{width:20px;height:20px;}
 
   /* nav */
-  nav{position:sticky;top:0;z-index:20;background:rgba(51,56,70,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule);}
+  nav{position:fixed;top:0;left:0;right:0;z-index:20;background:rgba(51,56,70,.82);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule);
+    transform:translateY(-100%);opacity:0;pointer-events:none;transition:transform .3s ease,opacity .3s ease;}
+  nav.show{transform:none;opacity:1;pointer-events:auto;}
   nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;}
   .brand{display:flex;align-items:center;gap:11px;font-weight:700;font-size:18px;letter-spacing:.04em;}
   .brand .logo{width:28px;height:28px;border-radius:8px;}
@@ -50,12 +53,12 @@
   .nav-dl{border:1.5px solid var(--ink);padding:8px 16px;border-radius:10px;color:var(--ink)!important;font-weight:700;}
 
   /* hero */
-  .hero{position:relative;min-height:100vh;display:flex;align-items:center;padding:96px 0 64px;overflow:hidden;}
-  #ink{position:absolute;inset:0;width:100%;height:100%;z-index:0;}
-  .hero::after{content:"";position:absolute;inset:0;background:radial-gradient(62% 60% at 50% 42%,transparent,rgba(51,56,70,.5));pointer-events:none;z-index:1;}
-  .hero .wrap{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;text-align:center;width:100%;}
+  .hero{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:90px 24px 70px;}
+  .hero .wrap{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;text-align:center;width:100%;max-width:780px;}
   .hero .cta{justify-content:center;}
-  .hero-vid{max-width:820px;width:100%;margin:46px auto 0;}
+  .hero-bg{position:absolute;inset:0;z-index:0;}
+  .hero-bg video{width:100%;height:100%;object-fit:cover;display:block;}
+  .hero-scrim{position:absolute;inset:0;z-index:1;background:radial-gradient(78% 78% at 50% 45%,rgba(30,33,42,.42),rgba(26,29,38,.82));}
   .eyebrow{font-size:14px;letter-spacing:.26em;color:var(--ai);margin-bottom:26px;}
   .eyebrow::before{content:"— ";}
   h1.catch{font-family:var(--fude);font-weight:800;font-size:clamp(40px,5.6vw,74px);line-height:1.32;letter-spacing:-.5px;}
@@ -81,27 +84,42 @@
   .row .raw{font-size:17px;color:var(--ink);}
   .row .raw.struck{color:var(--sub);text-decoration:line-through;opacity:.55;}
   .row .fix{font-size:17px;color:var(--ai);font-weight:700;font-family:var(--min);}
-  .row .fix .hl{background:linear-gradient(transparent 62%, rgba(212,205,100,.22) 62%);}
+  .row .fix .hl{background:linear-gradient(transparent 62%, rgba(98,199,242,.22) 62%);}
   .cmt{font-size:12px;color:var(--sub);margin-top:6px;}
 
   /* sections */
   section{padding:100px 0;}
-  .head{text-align:center;max-width:680px;margin:0 auto 54px;}
+  .head{text-align:center;max-width:var(--narrow);margin:0 auto 56px;}
   .head .k{font-family:var(--min);font-size:13px;color:var(--ai);letter-spacing:.12em;}
+  .head .k::after{content:"";display:block;width:30px;height:2px;margin:12px auto 0;border-radius:2px;background:var(--ai);opacity:.75;}
   .head h2{font-family:var(--min);font-weight:700;font-size:clamp(26px,3.8vw,40px);letter-spacing:.02em;margin:10px 0 0;}
   .head p{color:var(--sub);margin:12px 0 0;}
-  .alt{background:var(--paper2);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);}
+  .alt{background:var(--paper2);position:relative;}
+  .alt::before,.alt::after{content:"";position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--rule) 22%,var(--rule) 78%,transparent);}
+  .alt::before{top:0;} .alt::after{bottom:0;}
 
   /* why before/after */
-  .ba{display:grid;grid-template-columns:1fr 1.1fr;gap:24px;align-items:center;max-width:920px;margin:0 auto;}
+  .ba{display:grid;grid-template-columns:1fr 1.1fr;gap:24px;align-items:center;max-width:var(--wide);margin:0 auto;}
   .ba .scr,.ba .fixc{border:1px solid var(--rule);background:var(--panel);border-radius:14px;padding:22px;}
   .ba .cap{font-family:var(--min);font-size:12px;color:var(--ai);margin-bottom:12px;}
-  .ba .win{border:1px dashed rgba(212,205,100,.4);border-radius:8px;padding:20px;color:var(--sub);font-size:15px;}
-  .ba .win b{color:var(--ai);background:rgba(212,205,100,.12);padding:0 5px;border-radius:3px;}
+  .ba .win{border:1px dashed rgba(98,199,242,.4);border-radius:8px;padding:20px;color:var(--sub);font-size:15px;}
+  .ba .win b{color:var(--ai);background:rgba(98,199,242,.12);padding:0 5px;border-radius:3px;}
   .ba .down{text-align:center;color:var(--sub);font-size:12px;margin-top:12px;}
+  .ba .win{position:relative;overflow:hidden;}
+  .ba .win b{transition:box-shadow .25s ease, background .25s ease;}
+  .ba .win b.hit{box-shadow:0 0 0 2px rgba(98,199,242,.55);background:rgba(98,199,242,.22);}
+  .scanline{position:absolute;left:0;right:0;top:0;height:26px;pointer-events:none;background:linear-gradient(rgba(98,199,242,.20),rgba(98,199,242,0));transform:translateY(-32px);opacity:0;}
+  .scanline.run{animation:baScan 1s ease forwards;}
+  @keyframes baScan{0%{transform:translateY(-32px);opacity:0;}12%{opacity:1;}100%{transform:translateY(92px);opacity:0;}}
+  .row .raw{transition:color .3s ease, opacity .3s ease;}
+  .row .raw.struck{color:var(--sub);text-decoration:line-through;opacity:.55;}
+  .caret{display:inline-block;width:2px;height:18px;background:var(--ai);margin-left:3px;vertical-align:text-bottom;animation:baBlink 1s step-end infinite;}
+  @keyframes baBlink{50%{opacity:0;}}
+  .row.fixrow{opacity:0;transform:translateY(8px);transition:opacity .45s ease, transform .45s ease;}
+  .row.fixrow.show{opacity:1;transform:none;}
 
   /* flow */
-  .flow{display:flex;align-items:stretch;max-width:960px;margin:0 auto;}
+  .flow{display:flex;align-items:stretch;max-width:var(--wide);margin:0 auto;}
   .node{flex:1;border:1px solid var(--rule);background:var(--panel);border-radius:14px;padding:28px 18px;text-align:center;}
   .node .n{font-family:var(--min);font-size:30px;color:var(--ai);}
   .node .pic{height:64px;display:grid;place-items:center;margin:8px 0 12px;}
@@ -126,18 +144,18 @@
   .card p{margin:0;color:var(--sub);font-size:14px;}
 
   /* compare */
-  .cmp-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:14px;background:var(--panel);max-width:880px;margin:0 auto;}
+  .cmp-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:14px;background:var(--panel);max-width:var(--wide);margin:0 auto;}
   table.cmp{width:100%;min-width:560px;border-collapse:collapse;font-size:14.5px;}
   .cmp th,.cmp td{padding:15px 18px;text-align:left;border-bottom:1px solid var(--rule);}
   .cmp tbody tr:last-child th,.cmp tbody tr:last-child td{border-bottom:none;}
   .cmp thead th{font-size:13px;color:var(--sub);font-weight:700;}
   .cmp thead th.us{color:var(--ai);}
   .cmp tbody th{font-weight:500;}
-  .cmp .us-col{background:rgba(212,205,100,.05);}
+  .cmp .us-col{background:rgba(98,199,242,.05);}
   .cmp .y{color:var(--ai);font-weight:700;} .cmp .n{color:#a89f8c;}
 
   /* faq */
-  .faq{max-width:760px;margin:0 auto;border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--panel);}
+  .faq{max-width:var(--narrow);margin:0 auto;border:1px solid var(--rule);border-radius:14px;overflow:hidden;background:var(--panel);}
   .faq details{border-bottom:1px solid var(--rule);}
   .faq details:last-child{border-bottom:none;}
   .faq summary{cursor:pointer;list-style:none;padding:18px 22px;font-size:15.5px;display:flex;gap:12px;}
@@ -148,7 +166,7 @@
 
   /* cta + footer */
   .band{text-align:center;}
-  .band .box{max-width:760px;margin:0 auto;border:1px solid var(--rule);background:var(--panel);border-radius:18px;padding:54px 32px;}
+  .band .box{max-width:var(--narrow);margin:0 auto;border:1px solid var(--rule);background:var(--panel);border-radius:18px;padding:54px 32px;}
   .band h2{font-family:var(--min);font-weight:700;font-size:clamp(26px,4vw,38px);margin:0 0 12px;}
   .band p{color:var(--sub);margin:0 0 26px;}
   footer{border-top:1px solid var(--rule);padding:38px 0;color:var(--sub);font-size:13px;}
@@ -162,7 +180,7 @@
   .vmodal-x{position:absolute;top:-42px;right:0;background:none;border:none;color:#fff;font-size:30px;cursor:pointer;}
   .vframe{position:relative;aspect-ratio:16/9;background:#000;border-radius:14px;overflow:hidden;}
   .vframe video{width:100%;height:100%;display:block;}
-  .vph{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#cfc7b5;background:#15130f;}
+  .vph{position:absolute;inset:0;display:grid;place-items:end center;padding-bottom:20px;text-align:center;color:#8a93a8;font-size:12px;background:#12151c;}
   .vph b{color:#8fc3ff;display:block;margin-bottom:4px;}
 
   /* reveal */
@@ -179,6 +197,8 @@
 </head>
 <body>
 
+<canvas id="led" aria-hidden="true"></canvas>
+
 <nav><div class="wrap">
   <div class="brand"><svg class="logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="bl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c8cff"/><stop offset="1" stop-color="#4be0c4"/></linearGradient></defs><rect width="512" height="512" rx="120" fill="url(#bl)"/><polyline points="138,176 200,352 256,250 312,352 374,176" fill="none" stroke="#0b0d12" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"/></svg> Whispin</div>
   <div class="nav-links">
@@ -189,36 +209,33 @@
 
 <!-- HERO -->
 <header class="hero" id="download">
-  <canvas id="ink"></canvas>
-  <div class="wrap">
-    <div class="hero-copy">
-      <div class="eyebrow">日本語特化・常駐音声入力 · Windows · ¥0</div>
-      <h1 class="catch">打つのが面倒なら、<br><span class="em">話せばいい</span>じゃない。</h1>
-      <div class="cta">
-        <a class="btn btn-primary btn-lg" id="dl" href="#" aria-disabled="true">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.25 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.25z"/></svg>
-          Windows版をダウンロード
-        </a>
-      </div>
-      <p class="dlnote">Windows 11 ・ MSI インストーラー（<b>近日公開</b>）／クレカ不要の Groq API キーだけで動作</p>
-      <span class="toast" id="dlToast">準備中です。公開までもう少しお待ちください。</span>
+  <div class="hero-bg" aria-hidden="true">
+    <video id="demoVid" autoplay muted loop playsinline preload="metadata" poster="media/demo-poster.png"><source src="media/demo.mp4" type="video/mp4"></video>
+    <div class="vph" id="vph">デモ動画 準備中 — docs/media/demo.mp4 を置くと自動再生されます</div>
+    <div class="hero-scrim"></div>
+  </div>
+  <div class="wrap hero-copy">
+    <div class="eyebrow">日本語特化・常駐音声入力 · Windows · ¥0</div>
+    <h1 class="catch">打つのが面倒なら、<br><span class="em">話せばいい</span>じゃない。</h1>
+    <div class="cta">
+      <a class="btn btn-primary btn-lg" id="dl" href="#" aria-disabled="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.25 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.25z"/></svg>
+        Windows版をダウンロード
+      </a>
     </div>
-
-    <div class="vframe hero-vid" style="border:1px solid var(--rule);box-shadow:0 26px 60px rgba(40,40,30,.10);">
-      <video id="demoVid" autoplay muted loop playsinline preload="metadata" poster="media/demo-poster.png"><source src="media/demo.mp4" type="video/mp4"></video>
-      <div class="vph" id="vph"><span><b>デモ動画 準備中</b>docs/media/demo.mp4 を置くと、ここで自動再生されます</span></div>
-    </div>
+    <p class="dlnote">Windows 11 ・ MSI インストーラー（<b>近日公開</b>）／クレカ不要の Groq API キーだけで動作</p>
+    <span class="toast" id="dlToast">準備中です。公開までもう少しお待ちください。</span>
   </div>
 </header>
 
 <!-- WHY -->
 <section id="why"><div class="wrap">
   <div class="head reveal"><div class="k">見てるから、直せる</div><h2>画面の文脈で、誤認識まで直す。</h2><p>他の音声入力にはない「画面の文脈」。だから固有名詞も正しく書けます。</p></div>
-  <div class="ba reveal">
-    <div class="scr"><div class="cap">アクティブ画面（OCR）</div><div class="win">… <b>Claude Code</b> で更新を確認 …</div><div class="down">↓ 文脈として利用</div></div>
+  <div class="ba reveal" id="baAnim">
+    <div class="scr"><div class="cap">アクティブ画面（OCR）</div><div class="win">… <b id="ocrTerm">Claude Code</b> で更新を確認 …<span class="scanline" id="scanline"></span></div><div class="down">↓ 文脈として利用</div></div>
     <div class="fixc">
-      <div class="row"><span class="lbl">聞こえた</span><span class="raw struck">クロードコードでこうしんを直して</span></div>
-      <div class="row"><span class="lbl">直した</span><span class="fix">Claude Code で更新を直して</span></div>
+      <div class="row"><span class="lbl">聞こえた</span><span class="raw" id="rawTxt"></span><span class="caret" id="baCaret"></span></div>
+      <div class="row fixrow" id="fixRow"><span class="lbl">直した</span><span class="fix" id="fixTxt"></span></div>
     </div>
   </div>
 </div></section>
@@ -302,6 +319,51 @@
   var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
 
+  // hide the header while the hero is on screen; reveal after scrolling past it
+  var navEl=document.querySelector('nav');
+  if(navEl){
+    var onScroll=function(){ if(window.scrollY>window.innerHeight*0.85) navEl.classList.add('show'); else navEl.classList.remove('show'); };
+    window.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+  }
+
+  // WHY: animated before/after — type the misheard text, sweep the OCR screen,
+  // then strike it through and reveal the context-corrected line.
+  var ba=document.getElementById('baAnim');
+  if(ba){
+    var rawEl=document.getElementById('rawTxt'),
+        baCaret=document.getElementById('baCaret'),
+        fixRow=document.getElementById('fixRow'),
+        fixEl=document.getElementById('fixTxt'),
+        scan=document.getElementById('scanline'),
+        term=document.getElementById('ocrTerm');
+    var heard='クロードコードでこうしんを直して';
+    var fixedHTML='<span class="hl">Claude Code</span> で<span class="hl">更新</span>を直して';
+    async function playBA(){
+      while(true){
+        rawEl.textContent=''; rawEl.classList.remove('struck');
+        fixRow.classList.remove('show'); fixEl.innerHTML='';
+        baCaret.style.display='inline-block';
+        await sleep(600);
+        for(var i=0;i<heard.length;i++){ rawEl.textContent=heard.slice(0,i+1); await sleep(58); }
+        await sleep(450);
+        scan.classList.remove('run'); void scan.offsetWidth; scan.classList.add('run');
+        term.classList.add('hit');
+        await sleep(1000);
+        rawEl.classList.add('struck'); baCaret.style.display='none';
+        fixEl.innerHTML=fixedHTML; fixRow.classList.add('show');
+        await sleep(700); term.classList.remove('hit');
+        await sleep(2800);
+      }
+    }
+    if(reduce){
+      rawEl.textContent=heard; rawEl.classList.add('struck'); baCaret.style.display='none';
+      fixEl.innerHTML=fixedHTML; fixRow.classList.add('show');
+    } else {
+      var baIO=new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ playBA(); baIO.disconnect(); } }); },{threshold:.4});
+      baIO.observe(ba);
+    }
+  }
+
   // app marquee
   var apps=[['ブラウザ','M3 4h18v16H3zM3 8h18'],['エディタ','M8 8l-4 4 4 4M16 8l4 4-4 4'],['チャット','M21 11.5a8.5 8.5 0 0 1-12 7.7L3 21l1.8-5.5A8.5 8.5 0 1 1 21 11.5z'],['ターミナル','M3 4h18v16H3zM7 9l3 3-3 3M13 15h4'],['ドキュメント','M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6'],['メール','M3 5h18v14H3zM3 7l9 6 9-6']];
   var track=document.getElementById('track');
@@ -326,36 +388,41 @@
     if(b)b.addEventListener('click',function(e){e.preventDefault();if(t){t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show');},2600);}});}
   wireDl('dl','dlToast'); wireDl('dl2','dlToast2');
 
-  // faint sumi ink background in hero (single-pass warp shader, mouse swirl)
-  var cv=document.getElementById('ink');
-  var gl=cv&&(cv.getContext('webgl')||cv.getContext('experimental-webgl'));
-  if(gl){
-    var vs='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
-    var fs='precision highp float;uniform vec2 u_res;uniform float u_time;'+
-    'float h(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}'+
-    'float n(vec2 p){vec2 i=floor(p),f=fract(p);float a=h(i),b=h(i+vec2(1,0)),c=h(i+vec2(0,1)),d=h(i+vec2(1,1));vec2 u=f*f*(3.-2.*f);return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}'+
-    'float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.02;a*=.5;}return v;}'+
-    'void main(){vec2 uv=gl_FragCoord.xy/u_res;vec2 asp=vec2(u_res.x/u_res.y,1.);'+
-    'vec2 p=uv*asp*1.7;float t=u_time*0.03;'+
-    'vec2 q=vec2(fbm(p+vec2(0.,1.1)+t),fbm(p+vec2(5.2,1.3)-t*.8));'+
-    'vec2 r=vec2(fbm(p+1.8*q+vec2(1.7,9.2)+t*.6),fbm(p+1.8*q+vec2(8.3,2.8)-t*.4));'+
-    'float f=fbm(p+2.4*r);'+
-    'vec3 base=vec3(0.200,0.220,0.275),vein=vec3(0.270,0.300,0.370),gold=vec3(0.831,0.804,0.392);'+
-    'float mask=smoothstep(0.05,0.95,uv.x)*smoothstep(1.05,0.4,uv.y);'+
-    'float amt=smoothstep(0.48,0.74,f)*mask;'+
-    'vec3 col=base;col=mix(col,gold,clamp(r.x*0.4,0.,0.16)*mask);col=mix(col,vein,amt*0.5);'+
-    'gl_FragColor=vec4(col,1.);}';
-    function mk(t,s){var o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o;}
-    var pr=gl.createProgram();gl.attachShader(pr,mk(gl.VERTEX_SHADER,vs));gl.attachShader(pr,mk(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);gl.useProgram(pr);
-    var bf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,bf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
-    var al=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(al);gl.vertexAttribPointer(al,2,gl.FLOAT,false,0,0);
-    var uR=gl.getUniformLocation(pr,'u_res'),uT=gl.getUniformLocation(pr,'u_time');
-    function rs(){var dpr=Math.min(window.devicePixelRatio||1,1.5);cv.width=Math.floor(cv.clientWidth*dpr);cv.height=Math.floor(cv.clientHeight*dpr);gl.viewport(0,0,cv.width,cv.height);}
-    window.addEventListener('resize',rs);rs();
-    var t0=performance.now();
-    (function lp(){gl.uniform2f(uR,cv.width,cv.height);gl.uniform1f(uT,(performance.now()-t0)/1000);
-      gl.drawArrays(gl.TRIANGLES,0,3);requestAnimationFrame(lp);})();
+  // LED dot-matrix background — brightness forms flowing patterns
+  var led=document.getElementById('led');
+  if(led){
+    var lx=led.getContext('2d'),LW,LH,LD,gap=12;
+    function lsize(){LD=Math.min(window.devicePixelRatio||1,1.5);LW=led.clientWidth;LH=led.clientHeight;led.width=Math.floor(LW*LD);led.height=Math.floor(LH*LD);lx.setTransform(LD,0,0,LD,0,0);}
+    lsize();window.addEventListener('resize',lsize);
+    function hash(a,b){var n=Math.sin(a*127.1+b*311.7)*43758.5453;return n-Math.floor(n);}
+    function ldraw(t){
+      lx.clearRect(0,0,LW,LH);
+      var cols=Math.ceil(LW/gap)+1,rows=Math.ceil(LH/gap)+1,maxR=gap*0.46,TAU=6.2832;
+      for(var j=0;j<rows;j++){for(var i=0;i<cols;i++){
+        // large-scale brightness: bright top-left, fading toward bottom-right
+        var nx=i*gap/LW, ny=j*gap/LH;
+        // bright origin drifts around the upper-left over time
+        var ox=0.12+0.30*(0.5+0.5*Math.sin(t*0.15)), oy=0.10+0.26*(0.5+0.5*Math.cos(t*0.12));
+        var grad=1-Math.min(1,Math.hypot(nx-ox,ny-oy)/1.0);
+        // organic waves, gentle
+        var w=0.5+0.5*Math.sin(i*0.16+t*0.95)*Math.cos(j*0.18-t*0.72);
+        w*=0.6+0.4*Math.sin((i*0.06-j*0.05)+t*0.4);
+        // randomness: per-dot blink phase/speed + coarse random patches
+        var rnd=hash(i,j), coarse=hash((i*0.25)|0,(j*0.25)|0);
+        var tw=0.72+0.28*Math.sin(rnd*TAU+t*(0.9+rnd*1.7));
+        var b=grad*(0.30+0.78*w)*(0.5+0.75*coarse)*tw;
+        b=b<0?0:(b>1?1:b);
+        if(b>0.05){
+          var r=b*maxR, a=0.12+0.52*b;
+          lx.fillStyle='rgba(120,132,160,'+a.toFixed(3)+')';
+          lx.beginPath();lx.arc(i*gap+gap*0.5,j*gap+gap*0.5,r,0,TAU);lx.fill();
+        }
+      }}
+    }
+    if(reduce){ldraw(0);}
+    else{var lt0=performance.now();(function lloop(now){ldraw((now-lt0)/1000);requestAnimationFrame(lloop);})(performance.now());}
   }
+
 })();
 </script>
 </body>

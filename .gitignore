@@ -19,6 +19,9 @@ src-tauri/target/
 # Dev-time zombie exe rename (see scripts/dev.ps1)
 *.zombie-*
 
+# Landing-page design scratch (mockups, theme experiments)
+_heroart/
+
 # Claude Code local settings — contains local paths / permission allowlist
 .claude/
 

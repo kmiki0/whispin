@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Whispin — 画面の文脈で誤認識を直す日本語音声入力</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%237c8cff'/><stop offset='1' stop-color='%234be0c4'/></linearGradient></defs><rect width='512' height='512' rx='120' fill='url(%23g)'/><polyline points='138,176 200,352 256,250 312,352 374,176' fill='none' stroke='%230b0d12' stroke-width='50' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
-<meta name="description" content="Whispin は画面上の会話文脈を使って誤認識を補正する、日本語特化の常駐音声入力ツール。Windows 11・Tauri 製で軽量、Groq 無料枠で動くのでコストはゼロ。" />
+<meta name="description" content="Whispin は画面上の会話文脈を使って誤認識を補正する、日本語特化の常駐音声入力ツール。Windows 11・Tauri 製で軽量、文字起こしは Groq 無料枠で動くので低コスト。" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://kmiki0.github.io/whispin/" />
 <meta property="og:title" content="Whispin — 画面の文脈で誤認識を直す日本語音声入力" />
-<meta property="og:description" content="打つのが面倒なら、話せばいい。画面の文脈で誤認識まで直す日本語音声入力。Windows・¥0。" />
+<meta property="og:description" content="打つのが面倒なら、話せばいい。画面の文脈で誤認識まで直す日本語音声入力。Windows・文字起こしは Groq 無料枠。" />
 <meta property="og:image" content="https://kmiki0.github.io/whispin/media/ogp.png" />
 <meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -375,7 +375,7 @@
   <div class="wrap hero-copy">
     <div class="hero-text">
       <div class="ht-lead">
-        <div class="eyebrow">日本語特化・常駐音声入力 · Windows · ¥0</div>
+        <div class="eyebrow">日本語特化・常駐音声入力 · Windows · Groq 無料枠</div>
         <h1 class="catch">打つのが面倒なら、<br><span class="em">話せばいい</span>じゃない。</h1>
       </div>
       <div class="ht-cta">
@@ -385,7 +385,7 @@
             <span class="dl-os">Windows版を</span>ダウンロード
           </a>
         </div>
-        <p class="dlnote">Windows 11 ・ MSI インストーラー（<b>GitHub Releases</b>）／クレカ不要の Groq API キーだけで動作</p>
+        <p class="dlnote">Windows 11 ・ MSI インストーラー（<b>GitHub Releases</b>）／文字起こしはクレカ不要の <b>Groq 無料枠</b>、画面文脈の校正は <b>OpenRouter</b> キー</p>
       </div>
     </div>
     <div class="screen" aria-hidden="true">
@@ -476,7 +476,7 @@
       <tr><th>画面の文脈を利用</th><td class="us-col"><span class="y">✓</span> OCRして補正</td><td><span class="n">✗</span> 非対応</td></tr>
       <tr><th>句読点・フィラー整形</th><td class="us-col"><span class="y">✓</span> LLMで自然な文に</td><td><span class="n">✗</span> 基本なし</td></tr>
       <tr><th>どのアプリにも入力</th><td class="us-col"><span class="y">✓</span> 常駐＋自動貼り付け</td><td><span class="n">△</span> 対応欄に限定</td></tr>
-      <tr><th>コスト</th><td class="us-col"><span class="y">¥0</span> Groq 無料枠</td><td><span class="y">¥0</span> 無料</td></tr>
+      <tr><th>コスト</th><td class="us-col"><span class="y">¥0〜</span> 文字起こしは Groq 無料枠（校正は OpenRouter キー）</td><td><span class="y">¥0</span> 無料</td></tr>
     </tbody>
   </table></div>
 </div></section>
@@ -486,7 +486,7 @@
   <div class="head reveal"><div class="k">FAQ</div><h2>よくある質問。</h2></div>
   <div class="faq reveal">
     <details open><summary>対応OSは？</summary><div class="a">Windows 11。常駐するネイティブアプリ（MSIインストーラーで配布予定）です。</div></details>
-    <details><summary>料金は？</summary><div class="a">¥0。Groq 無料枠で動作。クレカ不要のキーを貼るだけ。</div></details>
+    <details><summary>料金は？</summary><div class="a">文字起こしはクレカ不要の Groq 無料枠で ¥0。画面の文脈で誤認識を直す AI 校正は OpenRouter のキーが必要です（任意・オフ可）。</div></details>
     <details><summary>プライバシーは？</summary><div class="a">キーは暗号化保存。画面文脈の送信はオフ可。音声・画面はため込みません。</div></details>
     <details><summary>ホットキーは変えられる？</summary><div class="a">設定でキー／マウスボタンを自由に変更可。既定は右クリック長押し。</div></details>
     <details><summary>どのアプリに入力できる？</summary><div class="a">直前のウィンドウへ自動貼り付け。入力欄があればどこでも。</div></details>
@@ -496,7 +496,7 @@
 <!-- CTA -->
 <section class="band"><div class="wrap"><div class="box reveal">
   <div class="band-brand"><svg class="logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><rect width="512" height="512" rx="120" fill="url(#bl)"/><polyline points="138,176 200,352 256,250 312,352 374,176" fill="none" stroke="#0b0d12" stroke-width="50" stroke-linecap="round" stroke-linejoin="round"/></svg> Whispin</div>
-  <p>Windows 11 ・ ¥0 ・ Groq 無料枠で動作</p>
+  <p>Windows 11 ・ 文字起こしは Groq 無料枠で ¥0（AI 校正は OpenRouter キー）</p>
   <div class="cta" style="justify-content:center">
     <a class="btn btn-primary" id="dl2" href="https://github.com/kmiki0/whispin/releases/latest"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.25 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.25z"/></svg> Windows版をダウンロード</a>
     <a class="btn btn-ghost" href="https://github.com/kmiki0/whispin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg> ソース（GitHub）</a>

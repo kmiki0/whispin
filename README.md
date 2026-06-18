@@ -2,6 +2,8 @@
 
 日本語特化の常駐音声入力ツール。Tauri 2 + Groq 無料枠で動作。
 
+![Whispin ランディングページのヒーロー](docs/media/hero-desktop.png)
+
 > 🌐 **プロモページ（ペライチ）:** [`docs/index.html`](docs/index.html) — GitHub Pages で公開する用のランディングページ。
 > リポジトリの **Settings → Pages → Source: `main` ブランチ / `/docs` フォルダ** を選ぶと `https://kmiki0.github.io/whispin/` で公開されます。
 
@@ -22,18 +24,24 @@
 
 ## セットアップ
 
-### 1. Groq API キー
+### 1. API キー
 
-クレカ不要で取得 → `https://console.groq.com/keys`
+文字起こしと画面文脈の校正で別々のプロバイダを使います。キーは設定画面 (DPAPI で暗号化保存) か環境変数のどちらでも指定できます。
 
-環境変数にセット (例 PowerShell ユーザー設定):
+- **文字起こし (必須)**: Groq / OpenAI / OpenRouter のいずれか 1 つ。クレカ不要の **Groq 無料枠**が手軽 → `https://console.groq.com/keys`
+- **画面文脈の AI 校正 (この機能を使うなら必須)**: **OpenRouter** キー → `https://openrouter.ai/keys` 。未設定なら文字起こし＋固有名詞辞書の置換のみ動作し、LLM 校正はスキップされます。
+
+> ℹ️ ASR プロバイダは **OpenRouter → OpenAI → Groq** の優先順で、設定済みキーのうち最初に見つかったものを使います。Groq キーだけなら文字起こしは Groq 無料枠で動きます。
+
+環境変数で渡す場合 (例 PowerShell ユーザー設定):
 ```powershell
 [System.Environment]::SetEnvironmentVariable('GROQ_API_KEY', 'gsk_xxx...', 'User')
+[System.Environment]::SetEnvironmentVariable('OPENROUTER_API_KEY', 'sk-or-xxx...', 'User')
 ```
 
 新しいシェルを開いて反映を確認:
 ```powershell
-$env:GROQ_API_KEY
+$env:GROQ_API_KEY; $env:OPENROUTER_API_KEY
 ```
 
 ### 2. 依存インストール
